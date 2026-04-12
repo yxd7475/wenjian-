@@ -1,0 +1,228 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+// 主布局
+.main-layout {
+  display: flex;
+  height: 100%;
+}
+
+.main-aside {
+  width: 220px;
+  background: #304156;
+  transition: width 0.3s;
+
+  .logo {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #263445;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .el-menu {
+    border-right: none;
+  }
+}
+
+.main-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .main-header {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+    .header-left {
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+  }
+
+  .main-content {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+    background: #f5f7fa;
+  }
+}
+
+// 登录页面
+.login-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  .login-box {
+    width: 400px;
+    padding: 40px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+
+    .login-title {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 24px;
+      color: #333;
+    }
+  }
+}
+
+// 文件列表
+.file-list {
+  .file-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover {
+      background: #f5f7fa;
+    }
+
+    .file-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      font-size: 24px;
+    }
+
+    .file-info {
+      flex: 1;
+
+      .file-name {
+        font-size: 14px;
+        color: #333;
+        margin-bottom: 4px;
+      }
+
+      .file-meta {
+        font-size: 12px;
+        color: #999;
+      }
+    }
+
+    .file-actions {
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    &:hover .file-actions {
+      opacity: 1;
+    }
+  }
+}
+
+// 文件夹树
+.folder-tree {
+  .el-tree-node__content {
+    height: 36px;
+  }
+}
+
+// 工具栏
+.toolbar {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  .toolbar-left {
+    display: flex;
+    gap: 8px;
+  }
+
+  .toolbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+}
+
+// 文件上传区域
+.upload-area {
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+
+  &:hover {
+    border-color: #409eff;
+  }
+
+  &.is-dragover {
+    border-color: #409eff;
+    background: #ecf5ff;
+  }
+
+  .upload-icon {
+    font-size: 48px;
+    color: #c0c4cc;
+    margin-bottom: 16px;
+  }
+
+  .upload-text {
+    color: #606266;
+    font-size: 14px;
+  }
+
+  .upload-hint {
+    color: #909399;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+}
+
+// 状态标签
+.status-tag {
+  &.success {
+    background: #f0f9eb;
+    color: #67c23a;
+  }
+
+  &.danger {
+    background: #fef0f0;
+    color: #f56c6c;
+  }
+}
+
+// 分页
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
