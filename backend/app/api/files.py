@@ -5,14 +5,18 @@ import os
 import uuid
 import hashlib
 import aiofiles
+import zipfile
+import tempfile
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, UploadFile, File, Form, Body
 from fastapi.responses import StreamingResponse, FileResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
-from app.models.models import User, File as FileModel, Folder, AuditLog, UploadTask
+from app.models.models import User, File as FileModel, Folder, AuditLog, UploadTask, Permission, RolePermission, FileVersion
+from app.utils.timezone import get_beijing_time
 from app.schemas import (
     FileResponse,
     FileListResponse,
@@ -28,7 +32,7 @@ from app.schemas import (
     MessageResponse,
 )
 from app.core.config import settings
-from app.api.deps import get_current_user, require_permission
+from app.api.deps import get_current_user, require_permission, get_superuser
 
 router = APIRouter(prefix="/files", tags=["文件管理"])
 
@@ -94,7 +98,10 @@ async def get_folder_tree(
         if folder.parent_id is None:
             root_folders.append(folder_tree)
         elif folder.parent_id in folder_map:
-            folder_map[folder.parent_id].children.append(folder_tree)
+            parent = folder_map[folder.parent_id]
+            if parent.children is None:
+                parent.children = []
+            parent.children.append(folder_tree)
 
     return root_folders
 
@@ -117,6 +124,19 @@ async def create_folder(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="父文件夹不存在",
             )
+
+    # 检查同名文件夹
+    query = select(Folder).where(Folder.name == data.name, Folder.is_deleted == False)
+    if data.parent_id:
+        query = query.where(Folder.parent_id == data.parent_id)
+    else:
+        query = query.where(Folder.parent_id == None)
+    result = await db.execute(query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="同名文件夹已存在",
+        )
 
     # 创建文件夹
     folder = Folder(
@@ -165,6 +185,19 @@ async def rename_folder(
             detail="文件夹不存在",
         )
 
+    # 检查同名
+    query = select(Folder).where(Folder.name == data.name, Folder.is_deleted == False, Folder.id != folder_id)
+    if folder.parent_id:
+        query = query.where(Folder.parent_id == folder.parent_id)
+    else:
+        query = query.where(Folder.parent_id == None)
+    result = await db.execute(query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="同名文件夹已存在",
+        )
+
     old_name = folder.name
     folder.name = data.name
     await db.commit()
@@ -184,7 +217,7 @@ async def delete_folder(
     current_user: User = Depends(require_permission("folder:delete")),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除文件夹 (软删除)"""
+    """删除文件夹 (软删除到回收站)"""
     result = await db.execute(
         select(Folder).where(Folder.id == folder_id, Folder.is_deleted == False)
     )
@@ -196,22 +229,34 @@ async def delete_folder(
             detail="文件夹不存在",
         )
 
-    # 检查是否有子文件夹
-    result = await db.execute(
-        select(Folder).where(Folder.parent_id == folder_id, Folder.is_deleted == False)
-    )
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="文件夹不为空，请先删除子文件夹",
+    # 递归删除子文件夹和文件
+    async def delete_folder_recursive(folder_id: int):
+        # 删除子文件夹
+        result = await db.execute(
+            select(Folder).where(Folder.parent_id == folder_id, Folder.is_deleted == False)
         )
+        for child in result.scalars().all():
+            await delete_folder_recursive(child.id)
 
-    folder.is_deleted = True
+        # 删除文件夹内的文件
+        result = await db.execute(
+            select(FileModel).where(FileModel.folder_id == folder_id, FileModel.is_deleted == False)
+        )
+        for file in result.scalars().all():
+            file.is_deleted = True
+            file.status = 2
+
+        # 删除文件夹
+        folder_result = await db.execute(select(Folder).where(Folder.id == folder_id))
+        f = folder_result.scalar_one()
+        f.is_deleted = True
+
+    await delete_folder_recursive(folder_id)
     await db.commit()
 
     await log_audit(db, current_user, "folder_delete", "folder", folder.id, folder.name, request)
 
-    return MessageResponse(message="文件夹已删除")
+    return MessageResponse(message="文件夹已移入回收站")
 
 
 # ==================== 文件管理 ====================
@@ -223,18 +268,31 @@ async def list_files(
     page_size: int = Query(20, ge=1, le=100),
     keyword: Optional[str] = None,
     ext: Optional[str] = None,
+    owner_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文件列表"""
-    query = select(FileModel).where(FileModel.is_deleted == False)
+    query = select(FileModel).options(selectinload(FileModel.owner)).where(FileModel.is_deleted == False)
 
+    # 按 folder_id 过滤
     if folder_id:
         query = query.where(FileModel.folder_id == folder_id)
+    else:
+        query = query.where(FileModel.folder_id == None)
+
     if keyword:
         query = query.where(FileModel.origin_name.ilike(f"%{keyword}%"))
     if ext:
         query = query.where(FileModel.ext == ext.lower())
+    if owner_id:
+        query = query.where(FileModel.owner_id == owner_id)
+    if date_from:
+        query = query.where(FileModel.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.where(FileModel.created_at <= datetime.fromisoformat(date_to))
 
     # 统计总数
     count_query = select(func.count()).select_from(query.subquery())
@@ -261,10 +319,11 @@ async def upload_file(
     file: UploadFile = File(...),
     folder_id: Optional[int] = Form(None),
     remark: Optional[str] = Form(None),
+    overwrite: bool = Form(False),
     current_user: User = Depends(require_permission("file:upload")),
     db: AsyncSession = Depends(get_db),
 ):
-    """上传文件 (简单上传)"""
+    """上传文件"""
     # 检查文件扩展名
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in settings.allowed_extensions_list:
@@ -272,6 +331,9 @@ async def upload_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"不支持的文件类型: {ext}",
         )
+
+    # 安全处理文件名
+    origin_name = os.path.basename(file.filename)
 
     # 检查文件大小
     content = await file.read()
@@ -293,14 +355,96 @@ async def upload_file(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="文件夹不存在",
             )
-        folder_path = folder.path.strip("/")
+        folder_path = folder.path.strip("/") if folder.path else ""
+
+    # 检查重名文件
+    existing_query = select(FileModel).where(
+        FileModel.origin_name == origin_name,
+        FileModel.is_deleted == False
+    )
+    if folder_id:
+        existing_query = existing_query.where(FileModel.folder_id == folder_id)
+    else:
+        existing_query = existing_query.where(FileModel.folder_id == None)
+
+    existing_result = await db.execute(existing_query)
+    existing_file = existing_result.scalar_one_or_none()
+
+    if existing_file:
+        if overwrite:
+            # 保存当前版本到版本历史
+            version_dir = os.path.join(os.path.dirname(existing_file.storage_path), "versions")
+            os.makedirs(version_dir, exist_ok=True)
+            old_version_path = os.path.join(version_dir, f"{existing_file.id}_v{existing_file.version_no}")
+
+            # 复制旧文件到版本目录
+            if os.path.exists(existing_file.storage_path):
+                import shutil
+                shutil.copy2(existing_file.storage_path, old_version_path)
+
+                # 创建版本记录
+                old_version = FileVersion(
+                    file_id=existing_file.id,
+                    version_no=existing_file.version_no,
+                    storage_path=old_version_path,
+                    size=existing_file.size,
+                    hash_sha256=existing_file.hash_sha256,
+                    created_by=current_user.id
+                )
+                db.add(old_version)
+
+            # 覆盖已有文件
+            existing_file.size = len(content)
+            existing_file.updated_at = get_beijing_time()
+            existing_file.version_no += 1
+
+            # 写入文件
+            storage_path = existing_file.storage_path
+            async with aiofiles.open(storage_path, "wb") as f:
+                await f.write(content)
+
+            # 计算哈希
+            file_hash = get_file_hash(storage_path)
+            existing_file.hash_sha256 = file_hash
+
+            await db.commit()
+            await db.refresh(existing_file)
+
+            await log_audit(
+                db, current_user, "file_upload_overwrite", "file", existing_file.id, existing_file.origin_name, request,
+                detail={"size": len(content), "ext": ext, "version": existing_file.version_no}
+            )
+
+            return FileResponse.model_validate(existing_file)
+        else:
+            # 自动重命名
+            base_name = origin_name.rsplit(".", 1)[0] if "." in origin_name else origin_name
+            counter = 1
+            while True:
+                new_name = f"{base_name} ({counter}).{ext}" if ext else f"{base_name} ({counter})"
+                check_query = select(FileModel).where(
+                    FileModel.origin_name == new_name,
+                    FileModel.is_deleted == False
+                )
+                if folder_id:
+                    check_query = check_query.where(FileModel.folder_id == folder_id)
+                else:
+                    check_query = check_query.where(FileModel.folder_id == None)
+                if not (await db.execute(check_query)).scalar_one_or_none():
+                    origin_name = new_name
+                    break
+                counter += 1
 
     # 生成存储文件名
     stored_name = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
-    storage_path = os.path.join(settings.STORAGE_PATH, folder_path, stored_name)
+    storage_path = os.path.join(settings.STORAGE_PATH, folder_path, stored_name) if folder_path else os.path.join(settings.STORAGE_PATH, stored_name)
 
     # 确保目录存在
-    os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+    storage_dir = os.path.dirname(storage_path)
+    if storage_dir:
+        os.makedirs(storage_dir, exist_ok=True)
+    else:
+        os.makedirs(settings.STORAGE_PATH, exist_ok=True)
 
     # 写入文件
     async with aiofiles.open(storage_path, "wb") as f:
@@ -312,7 +456,7 @@ async def upload_file(
     # 保存到数据库
     file_record = FileModel(
         folder_id=folder_id,
-        origin_name=file.filename,
+        origin_name=origin_name,
         stored_name=stored_name,
         storage_path=storage_path,
         ext=ext,
@@ -321,10 +465,23 @@ async def upload_file(
         hash_sha256=file_hash,
         owner_id=current_user.id,
         remark=remark,
+        version_no=1,
     )
     db.add(file_record)
     await db.commit()
     await db.refresh(file_record)
+
+    # 创建初始版本记录
+    version = FileVersion(
+        file_id=file_record.id,
+        version_no=1,
+        storage_path=storage_path,
+        size=len(content),
+        hash_sha256=file_hash,
+        created_by=current_user.id
+    )
+    db.add(version)
+    await db.commit()
 
     await log_audit(
         db, current_user, "file_upload", "file", file_record.id, file_record.origin_name, request,
@@ -334,30 +491,96 @@ async def upload_file(
     return FileResponse.model_validate(file_record)
 
 
-@router.get("/{file_id}/download")
-async def download_file(
+@router.put("/{file_id}/rename", response_model=FileResponse)
+async def rename_file(
     file_id: int,
-    request: Request,
-    current_user: User = Depends(require_permission("file:download")),
+    data: dict = Body(...),
+    request: Request = None,
+    current_user: User = Depends(require_permission("file:rename")),
     db: AsyncSession = Depends(get_db),
 ):
-    """下载文件"""
+    """重命名文件"""
+    new_name = data.get("name")
+    if not new_name:
+        raise HTTPException(status_code=400, detail="请提供新文件名")
+
     result = await db.execute(
         select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
     )
     file_record = result.scalar_one_or_none()
 
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件不存在",
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 检查重名
+    query = select(FileModel).where(
+        FileModel.origin_name == new_name,
+        FileModel.is_deleted == False,
+        FileModel.id != file_id
+    )
+    if file_record.folder_id:
+        query = query.where(FileModel.folder_id == file_record.folder_id)
+    else:
+        query = query.where(FileModel.folder_id == None)
+
+    if (await db.execute(query)).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="同名文件已存在")
+
+    old_name = file_record.origin_name
+    file_record.origin_name = new_name
+    await db.commit()
+
+    await log_audit(
+        db, current_user, "file_rename", "file", file_record.id, file_record.origin_name, request,
+        detail={"old_name": old_name, "new_name": new_name}
+    )
+
+    return FileResponse.model_validate(file_record)
+
+
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: int,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """下载文件"""
+    from app.core.security import decode_access_token
+
+    current_user = None
+    if token:
+        payload = decode_access_token(token)
+        if payload:
+            user_id = payload.get("sub")
+            if user_id:
+                result = await db.execute(select(User).where(User.id == int(user_id)))
+                current_user = result.scalar_one_or_none()
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="需要认证")
+
+    # 检查权限
+    if not current_user.is_superuser:
+        result = await db.execute(
+            select(Permission)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == current_user.role_id)
+            .where(Permission.code == "file:download")
         )
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="没有下载权限")
+
+    result = await db.execute(
+        select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
+    )
+    file_record = result.scalar_one_or_none()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
 
     if not os.path.exists(file_record.storage_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件已被删除",
-        )
+        raise HTTPException(status_code=404, detail="文件已被删除")
 
     await log_audit(
         db, current_user, "file_download", "file", file_record.id, file_record.origin_name, request
@@ -370,42 +593,94 @@ async def download_file(
     )
 
 
+@router.post("/batch-download")
+async def batch_download(
+    request: Request,
+    data: dict = Body(...),
+    current_user: User = Depends(require_permission("file:download")),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量下载文件（打包成zip）"""
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        raise HTTPException(status_code=400, detail="请选择要下载的文件")
+
+    result = await db.execute(
+        select(FileModel).where(FileModel.id.in_(file_ids), FileModel.is_deleted == False)
+    )
+    files = result.scalars().all()
+
+    if not files:
+        raise HTTPException(status_code=404, detail="没有找到可下载的文件")
+
+    # 创建临时zip文件
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for file_record in files:
+            if os.path.exists(file_record.storage_path):
+                zipf.write(file_record.storage_path, file_record.origin_name)
+
+    await log_audit(
+        db, current_user, "file_batch_download", "file", 0, f"{len(files)}个文件", request,
+        detail={"file_ids": file_ids}
+    )
+
+    def iterfile():
+        with open(tmp_path, 'rb') as f:
+            yield from f
+        os.unlink(tmp_path)
+
+    return StreamingResponse(
+        iterfile(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=download_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"}
+    )
+
+
 @router.get("/{file_id}/preview")
 async def preview_file(
     file_id: int,
-    current_user: User = Depends(require_permission("file:view")),
+    token: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """预览文件"""
+    from app.core.security import decode_access_token
+
+    current_user = None
+    if token:
+        payload = decode_access_token(token)
+        if payload:
+            user_id = payload.get("sub")
+            if user_id:
+                result = await db.execute(select(User).where(User.id == int(user_id)))
+                current_user = result.scalar_one_or_none()
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="需要认证")
+
+    # 检查权限
+    if not current_user.is_superuser:
+        result = await db.execute(
+            select(Permission)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == current_user.role_id)
+            .where(Permission.code == "file:view")
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="没有查看权限")
+
     result = await db.execute(
         select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
     )
     file_record = result.scalar_one_or_none()
 
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件不存在",
-        )
+        raise HTTPException(status_code=404, detail="文件不存在")
 
     if not os.path.exists(file_record.storage_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件已被删除",
-        )
-
-    # 根据文件类型返回预览
-    preview_types = [
-        "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp",
-        "application/pdf",
-        "text/plain", "text/markdown", "text/html",
-    ]
-
-    if file_record.mime_type not in preview_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该文件类型不支持预览",
-        )
+        raise HTTPException(status_code=404, detail="文件已被删除")
 
     return FileResponse(
         path=file_record.storage_path,
@@ -420,20 +695,17 @@ async def delete_file(
     current_user: User = Depends(require_permission("file:delete")),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除文件 (软删除)"""
+    """删除文件 (移入回收站)"""
     result = await db.execute(
         select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
     )
     file_record = result.scalar_one_or_none()
 
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件不存在",
-        )
+        raise HTTPException(status_code=404, detail="文件不存在")
 
     file_record.is_deleted = True
-    file_record.status = 2  # 回收站
+    file_record.status = 2
     await db.commit()
 
     await log_audit(
@@ -441,6 +713,37 @@ async def delete_file(
     )
 
     return MessageResponse(message="文件已移入回收站")
+
+
+@router.post("/batch-delete", response_model=MessageResponse)
+async def batch_delete_files(
+    request: Request,
+    data: dict = Body(...),
+    current_user: User = Depends(require_permission("file:delete")),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量删除文件"""
+    file_ids = data.get("file_ids", [])
+    if not file_ids:
+        raise HTTPException(status_code=400, detail="请选择要删除的文件")
+
+    result = await db.execute(
+        select(FileModel).where(FileModel.id.in_(file_ids), FileModel.is_deleted == False)
+    )
+    files = result.scalars().all()
+
+    for file_record in files:
+        file_record.is_deleted = True
+        file_record.status = 2
+
+    await db.commit()
+
+    await log_audit(
+        db, current_user, "file_batch_delete", "file", 0, f"{len(files)}个文件", request,
+        detail={"file_ids": [f.id for f in files]}
+    )
+
+    return MessageResponse(message=f"已删除 {len(files)} 个文件")
 
 
 @router.post("/{file_id}/move", response_model=FileResponse)
@@ -452,44 +755,43 @@ async def move_file(
     db: AsyncSession = Depends(get_db),
 ):
     """移动文件"""
-    # 获取文件
     result = await db.execute(
         select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
     )
     file_record = result.scalar_one_or_none()
 
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件不存在",
-        )
+        raise HTTPException(status_code=404, detail="文件不存在")
 
-    # 获取目标文件夹
-    result = await db.execute(
-        select(Folder).where(Folder.id == data.target_folder_id, Folder.is_deleted == False)
-    )
-    target_folder = result.scalar_one_or_none()
-
-    if not target_folder:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="目标文件夹不存在",
+    # 目标文件夹
+    if data.target_folder_id:
+        result = await db.execute(
+            select(Folder).where(Folder.id == data.target_folder_id, Folder.is_deleted == False)
         )
+        target_folder = result.scalar_one_or_none()
+        if not target_folder:
+            raise HTTPException(status_code=404, detail="目标文件夹不存在")
+        folder_path = target_folder.path.strip("/")
+    else:
+        target_folder = None
+        folder_path = ""
 
     # 移动物理文件
     old_path = file_record.storage_path
-    new_path = os.path.join(settings.STORAGE_PATH, target_folder.path.strip("/"), file_record.stored_name)
-    os.makedirs(os.path.dirname(new_path), exist_ok=True)
-    os.rename(old_path, new_path)
+    new_path = os.path.join(settings.STORAGE_PATH, folder_path, file_record.stored_name) if folder_path else os.path.join(settings.STORAGE_PATH, file_record.stored_name)
 
-    # 更新数据库
-    file_record.folder_id = target_folder.id
+    if old_path != new_path:
+        os.makedirs(os.path.dirname(new_path) if os.path.dirname(new_path) else settings.STORAGE_PATH, exist_ok=True)
+        if os.path.exists(old_path):
+            os.rename(old_path, new_path)
+
+    file_record.folder_id = data.target_folder_id
     file_record.storage_path = new_path
     await db.commit()
 
     await log_audit(
         db, current_user, "file_move", "file", file_record.id, file_record.origin_name, request,
-        detail={"target_folder": target_folder.name}
+        detail={"target_folder": target_folder.name if target_folder else "根目录"}
     )
 
     return FileResponse.model_validate(file_record)
@@ -504,44 +806,38 @@ async def copy_file(
     db: AsyncSession = Depends(get_db),
 ):
     """复制文件"""
-    # 获取源文件
+    import shutil
+
     result = await db.execute(
         select(FileModel).where(FileModel.id == file_id, FileModel.is_deleted == False)
     )
     source_file = result.scalar_one_or_none()
 
     if not source_file:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="源文件不存在",
+        raise HTTPException(status_code=404, detail="源文件不存在")
+
+    # 目标文件夹
+    if data.target_folder_id:
+        result = await db.execute(
+            select(Folder).where(Folder.id == data.target_folder_id, Folder.is_deleted == False)
         )
+        target_folder = result.scalar_one_or_none()
+        if not target_folder:
+            raise HTTPException(status_code=404, detail="目标文件夹不存在")
+        folder_path = target_folder.path.strip("/")
+    else:
+        target_folder = None
+        folder_path = ""
 
-    # 获取目标文件夹
-    result = await db.execute(
-        select(Folder).where(Folder.id == data.target_folder_id, Folder.is_deleted == False)
-    )
-    target_folder = result.scalar_one_or_none()
-
-    if not target_folder:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="目标文件夹不存在",
-        )
-
-    # 复制物理文件
     new_name = data.new_name or f"副本_{source_file.origin_name}"
     new_stored_name = f"{uuid.uuid4().hex}.{source_file.ext}" if source_file.ext else uuid.uuid4().hex
-    new_path = os.path.join(settings.STORAGE_PATH, target_folder.path.strip("/"), new_stored_name)
+    new_path = os.path.join(settings.STORAGE_PATH, folder_path, new_stored_name) if folder_path else os.path.join(settings.STORAGE_PATH, new_stored_name)
 
-    os.makedirs(os.path.dirname(new_path), exist_ok=True)
-
-    # 复制文件内容
-    import shutil
+    os.makedirs(os.path.dirname(new_path) if os.path.dirname(new_path) else settings.STORAGE_PATH, exist_ok=True)
     shutil.copy2(source_file.storage_path, new_path)
 
-    # 创建新文件记录
     new_file = FileModel(
-        folder_id=target_folder.id,
+        folder_id=data.target_folder_id,
         origin_name=new_name,
         stored_name=new_stored_name,
         storage_path=new_path,
@@ -561,3 +857,221 @@ async def copy_file(
     )
 
     return FileResponse.model_validate(new_file)
+
+
+# ==================== 回收站 ====================
+
+@router.get("/trash/list", response_model=FileListResponse)
+async def list_trash(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取回收站文件列表"""
+    query = select(FileModel).options(selectinload(FileModel.owner)).where(FileModel.status == 2)
+
+    # 普通用户只能看自己删除的
+    if not current_user.is_superuser:
+        query = query.where(FileModel.owner_id == current_user.id)
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar()
+
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.order_by(FileModel.updated_at.desc())
+
+    result = await db.execute(query)
+    files = result.scalars().all()
+
+    return FileListResponse(
+        items=[FileResponse.model_validate(f) for f in files],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post("/trash/{file_id}/restore", response_model=MessageResponse)
+async def restore_file(
+    file_id: int,
+    request: Request,
+    current_user: User = Depends(require_permission("file:delete")),
+    db: AsyncSession = Depends(get_db),
+):
+    """恢复文件"""
+    result = await db.execute(
+        select(FileModel).where(FileModel.id == file_id, FileModel.status == 2)
+    )
+    file_record = result.scalar_one_or_none()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不在回收站中")
+
+    file_record.is_deleted = False
+    file_record.status = 1
+    await db.commit()
+
+    await log_audit(db, current_user, "file_restore", "file", file_record.id, file_record.origin_name, request)
+
+    return MessageResponse(message="文件已恢复")
+
+
+@router.delete("/trash/{file_id}", response_model=MessageResponse)
+async def permanent_delete_file(
+    file_id: int,
+    request: Request,
+    current_user: User = Depends(get_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """彻底删除文件（管理员）"""
+    from app.api.deps import get_superuser
+
+    result = await db.execute(
+        select(FileModel).where(FileModel.id == file_id)
+    )
+    file_record = result.scalar_one_or_none()
+
+    if not file_record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 删除物理文件
+    if os.path.exists(file_record.storage_path):
+        os.remove(file_record.storage_path)
+
+    await db.delete(file_record)
+    await db.commit()
+
+    await log_audit(db, current_user, "file_permanent_delete", "file", file_record.id, file_record.origin_name, request)
+
+    return MessageResponse(message="文件已彻底删除")
+
+
+@router.delete("/trash", response_model=MessageResponse)
+async def empty_trash(
+    request: Request,
+    current_user: User = Depends(get_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """清空回收站（管理员）"""
+    result = await db.execute(
+        select(FileModel).where(FileModel.status == 2)
+    )
+    files = result.scalars().all()
+
+    for file_record in files:
+        if os.path.exists(file_record.storage_path):
+            os.remove(file_record.storage_path)
+        await db.delete(file_record)
+
+    await db.commit()
+
+    await log_audit(db, current_user, "trash_empty", "system", 0, "回收站", request, detail={"count": len(files)})
+
+    return MessageResponse(message=f"已清空回收站，删除 {len(files)} 个文件")
+
+
+# ==================== 搜索 ====================
+
+@router.get("/search", response_model=FileListResponse)
+async def search_files(
+    keyword: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    ext: Optional[str] = None,
+    owner_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """搜索文件"""
+    query = select(FileModel).options(selectinload(FileModel.owner)).where(FileModel.is_deleted == False)
+
+    query = query.where(FileModel.origin_name.ilike(f"%{keyword}%"))
+
+    if ext:
+        query = query.where(FileModel.ext == ext.lower())
+    if owner_id:
+        query = query.where(FileModel.owner_id == owner_id)
+    if date_from:
+        query = query.where(FileModel.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.where(FileModel.created_at <= datetime.fromisoformat(date_to))
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar()
+
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.order_by(FileModel.created_at.desc())
+
+    result = await db.execute(query)
+    files = result.scalars().all()
+
+    return FileListResponse(
+        items=[FileResponse.model_validate(f) for f in files],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# ==================== 用户统计 ====================
+
+@router.get("/my/stats")
+async def get_my_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户的存储统计"""
+    # 文件数量
+    file_count = (await db.execute(
+        select(func.count()).select_from(FileModel)
+        .where(FileModel.owner_id == current_user.id)
+        .where(FileModel.is_deleted == False)
+    )).scalar() or 0
+
+    # 文件夹数量
+    folder_count = (await db.execute(
+        select(func.count()).select_from(Folder)
+        .where(Folder.owner_id == current_user.id)
+        .where(Folder.is_deleted == False)
+    )).scalar() or 0
+
+    # 总大小
+    total_size = (await db.execute(
+        select(func.coalesce(func.sum(FileModel.size), 0))
+        .where(FileModel.owner_id == current_user.id)
+        .where(FileModel.is_deleted == False)
+    )).scalar() or 0
+
+    # 按类型统计
+    type_result = await db.execute(
+        select(
+            FileModel.ext,
+            func.count().label("count"),
+            func.sum(FileModel.size).label("size")
+        )
+        .where(FileModel.owner_id == current_user.id)
+        .where(FileModel.is_deleted == False)
+        .group_by(FileModel.ext)
+    )
+    type_rows = type_result.all()
+
+    total_file_count = sum(r.count for r in type_rows) or 1
+    by_type = [
+        {
+            "ext": r.ext or "其他",
+            "count": r.count,
+            "size": r.size or 0,
+            "percentage": round(r.count / total_file_count * 100, 1)
+        }
+        for r in type_rows[:10]
+    ]
+
+    return {
+        "file_count": file_count,
+        "folder_count": folder_count,
+        "total_size": total_size,
+        "by_type": by_type
+    }

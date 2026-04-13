@@ -9,6 +9,12 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/share/:code',
+    name: 'ShareAccess',
+    component: () => import('@/views/ShareAccess.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
@@ -40,6 +46,36 @@ const routes = [
         name: 'Settings',
         component: () => import('@/views/Settings.vue'),
         meta: { title: '系统设置' }
+      },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: () => import('@/views/Profile.vue'),
+        meta: { title: '个人中心' }
+      },
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/Dashboard.vue'),
+        meta: { title: '管理后台', requiresAdmin: true }
+      },
+      {
+        path: 'shares',
+        name: 'Shares',
+        component: () => import('@/views/Shares.vue'),
+        meta: { title: '我的分享' }
+      },
+      {
+        path: 'backup',
+        name: 'Backup',
+        component: () => import('@/views/Backup.vue'),
+        meta: { title: '备份恢复', requiresAdmin: true }
+      },
+      {
+        path: 'alerts',
+        name: 'Alerts',
+        component: () => import('@/views/Alerts.vue'),
+        meta: { title: '告警中心', requiresAdmin: true }
       }
     ]
   }

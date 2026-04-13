@@ -7,7 +7,12 @@ export const useUserStore = defineStore('user', () => {
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
 
   const isLoggedIn = computed(() => !!token.value)
-  const isAdmin = computed(() => user.value?.is_superuser || user.value?.role?.code === 'admin' || user.value?.role?.code === 'super_admin')
+  const isAdmin = computed(() => {
+    if (!user.value) return false
+    if (user.value.is_superuser) return true
+    if (user.value.role && (user.value.role.code === 'admin' || user.value.role.code === 'super_admin')) return true
+    return false
+  })
 
   async function login(username, password) {
     const res = await api.post('/auth/login', { username, password })

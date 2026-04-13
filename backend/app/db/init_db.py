@@ -7,7 +7,11 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import engine, AsyncSessionLocal, Base
-from app.models.models import User, Role, Permission, Department, RolePermission
+from app.models.models import (
+    User, Role, Permission, Department, RolePermission,
+    Folder, File, FileVersion, FilePermission, AuditLog, UploadTask,
+    FileShare, BackupRecord, AuditAlert, SystemConfig
+)
 from app.core.security import get_password_hash
 
 

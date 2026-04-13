@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.models import User, Department, Role, AuditLog
 from app.schemas import (
@@ -32,7 +33,7 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     """获取用户列表 (需要管理员权限)"""
-    query = select(User)
+    query = select(User).options(selectinload(User.role))
 
     # 筛选条件
     if username:
@@ -140,10 +141,18 @@ async def update_user(
     user_id: int,
     data: UserUpdate,
     request: Request,
-    current_user: User = Depends(get_superuser),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新用户信息 (需要管理员权限)"""
+    """更新用户信息"""
+    # 只能修改自己的信息，或者是管理员
+    is_admin = current_user.is_superuser or (current_user.role and current_user.role.code in ('admin', 'super_admin'))
+    if user_id != current_user.id and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只能修改自己的信息",
+        )
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
@@ -158,10 +167,12 @@ async def update_user(
         user.real_name = data.real_name
     if data.email is not None:
         user.email = data.email
-    if data.department_id is not None:
-        user.department_id = data.department_id
-    if data.role_id is not None:
-        user.role_id = data.role_id
+    # 只有管理员可以修改部门和角色
+    if is_admin:
+        if data.department_id is not None:
+            user.department_id = data.department_id
+        if data.role_id is not None:
+            user.role_id = data.role_id
 
     await db.commit()
     await db.refresh(user)
@@ -261,3 +272,53 @@ async def reset_user_password(
     await db.commit()
 
     return MessageResponse(message="密码重置成功")
+
+
+@router.delete("/{user_id}", response_model=MessageResponse)
+async def delete_user(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(get_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除用户 (需要管理员权限)"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    # 不能删除自己
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能删除自己的账号",
+        )
+
+    # 不能删除超级管理员
+    if user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能删除超级管理员",
+        )
+
+    username = user.username
+    await db.delete(user)
+
+    # 记录日志
+    log = AuditLog(
+        user_id=current_user.id,
+        username=current_user.username,
+        action="user_delete",
+        target_type="user",
+        target_id=user_id,
+        target_name=username,
+        ip=request.client.host if request.client else None,
+    )
+    db.add(log)
+    await db.commit()
+
+    return MessageResponse(message="用户已删除")

@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.models import User, AuditLog
 from app.schemas import (
@@ -20,6 +21,7 @@ from app.core.security import (
     create_access_token,
 )
 from app.api.deps import get_current_user
+from app.utils.timezone import get_beijing_time
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -54,9 +56,9 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """用户登录"""
-    # 查询用户
+    # 查询用户（加载role关系）
     result = await db.execute(
-        select(User).where(User.username == data.username)
+        select(User).options(selectinload(User.role)).where(User.username == data.username)
     )
     user = result.scalar_one_or_none()
 
@@ -85,7 +87,7 @@ async def login(
         )
 
     # 更新最后登录时间
-    user.last_login = datetime.utcnow()
+    user.last_login = get_beijing_time()
     await db.commit()
 
     # 生成令牌
@@ -115,10 +117,16 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """获取当前用户信息"""
-    return UserResponse.model_validate(current_user)
+    # 重新查询以加载role关系
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == current_user.id)
+    )
+    user = result.scalar_one_or_none()
+    return UserResponse.model_validate(user)
 
 
 @router.put("/password", response_model=MessageResponse)

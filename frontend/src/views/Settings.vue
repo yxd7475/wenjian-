@@ -6,11 +6,10 @@
       </template>
 
       <el-tabs v-model="activeTab">
-        <!-- 基本信息 -->
         <el-tab-pane label="基本信息" name="profile">
           <el-form :model="profileForm" label-width="100px" style="max-width: 500px">
             <el-form-item label="用户名">
-              <el-input v-model="userStore.user?.username" disabled />
+              <el-input v-model="userStore.user.username" disabled />
             </el-form-item>
             <el-form-item label="姓名">
               <el-input v-model="profileForm.real_name" />
@@ -24,7 +23,6 @@
           </el-form>
         </el-tab-pane>
 
-        <!-- 修改密码 -->
         <el-tab-pane label="修改密码" name="password">
           <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="100px" style="max-width: 500px">
             <el-form-item label="当前密码" prop="old_password">
@@ -42,17 +40,12 @@
           </el-form>
         </el-tab-pane>
 
-        <!-- 关于 -->
         <el-tab-pane label="关于" name="about">
           <el-descriptions :column="1" border style="max-width: 500px">
             <el-descriptions-item label="系统名称">局域网文件共享系统</el-descriptions-item>
             <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
-            <el-descriptions-item label="技术栈">
-              Vue 3 + Element Plus + FastAPI
-            </el-descriptions-item>
-            <el-descriptions-item label="功能特性">
-              文件上传/下载、文件夹管理、权限控制、审计日志
-            </el-descriptions-item>
+            <el-descriptions-item label="技术栈">Vue 3 + Element Plus + FastAPI</el-descriptions-item>
+            <el-descriptions-item label="功能特性">文件上传/下载、文件夹管理、权限控制、审计日志</el-descriptions-item>
           </el-descriptions>
         </el-tab-pane>
       </el-tabs>
@@ -67,9 +60,8 @@ import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
 
 const userStore = useUserStore()
-
 const activeTab = ref('profile')
-const passwordFormRef = ref()
+const passwordFormRef = ref(null)
 
 const profileForm = reactive({
   real_name: '',
@@ -82,6 +74,14 @@ const passwordForm = reactive({
   confirm_password: ''
 })
 
+const validateConfirm = (rule, value, callback) => {
+  if (value !== passwordForm.new_password) {
+    callback(new Error('两次输入的密码不一致'))
+  } else {
+    callback()
+  }
+}
+
 const passwordRules = {
   old_password: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   new_password: [
@@ -90,20 +90,10 @@ const passwordRules = {
   ],
   confirm_password: [
     { required: true, message: '请确认新密码', trigger: 'blur' },
-    {
-      validator: (rule, value, callback) => {
-        if (value !== passwordForm.new_password) {
-          callback(new Error('两次输入的密码不一致'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur'
-    }
+    { validator: validateConfirm, trigger: 'blur' }
   ]
 }
 
-// 初始化表单
 onMounted(() => {
   if (userStore.user) {
     profileForm.real_name = userStore.user.real_name || ''
@@ -111,10 +101,9 @@ onMounted(() => {
   }
 })
 
-// 更新个人信息
 const updateProfile = async () => {
   try {
-    await api.put(`/users/${userStore.user.id}`, profileForm)
+    await api.put('/users/' + userStore.user.id, profileForm)
     await userStore.fetchCurrentUser()
     ElMessage.success('更新成功')
   } catch (error) {
@@ -122,7 +111,6 @@ const updateProfile = async () => {
   }
 }
 
-// 修改密码
 const changePassword = async () => {
   try {
     await passwordFormRef.value.validate()

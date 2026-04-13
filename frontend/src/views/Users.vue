@@ -50,7 +50,7 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="editUser(row)">编辑</el-button>
             <el-button
@@ -60,8 +60,16 @@
             >
               {{ row.status ? '禁用' : '启用' }}
             </el-button>
-            <el-button size="small" type="danger" @click="resetPassword(row)">
+            <el-button size="small" @click="resetPassword(row)">
               重置密码
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              @click="deleteUser(row)"
+              :disabled="row.is_superuser"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -275,6 +283,28 @@ const doResetPassword = async () => {
     showPasswordDialog.value = false
   } catch (error) {
     console.error('重置密码失败:', error)
+  }
+}
+
+// 删除用户
+const deleteUser = async (user) => {
+  if (user.is_superuser) {
+    ElMessage.warning('不能删除超级管理员')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除用户 "${user.username}" 吗？此操作不可恢复。`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    await api.delete(`/users/${user.id}`)
+    ElMessage.success('用户已删除')
+    loadUsers()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除用户失败:', error)
+    }
   }
 }
 

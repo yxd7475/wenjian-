@@ -10,7 +10,14 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
-from app.api import auth_router, users_router, files_router, audit_router
+from app.api import auth_router, users_router, files_router, audit_router, roles_router
+from app.api.dashboard import router as dashboard_router
+from app.api.versions import router as versions_router
+from app.api.shares import router as shares_router
+from app.api.backup import router as backup_router
+from app.api.alerts import router as alerts_router
+from app.api.chunk_upload import router as chunk_upload_router
+from app.utils.scheduler import setup_scheduler
 
 # 配置日志
 logging.basicConfig(
@@ -35,6 +42,10 @@ async def lifespan(app: FastAPI):
     from app.db.init_db import init_db
     import asyncio
     await init_db()
+
+    # 启动定时备份调度器
+    setup_scheduler()
+    logger.info("定时备份调度器已启动")
 
     logger.info(f"应用已启动: http://{settings.HOST}:{settings.PORT}")
 
@@ -80,6 +91,13 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(files_router, prefix="/api")
 app.include_router(audit_router, prefix="/api")
+app.include_router(roles_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
+app.include_router(versions_router, prefix="/api")
+app.include_router(shares_router, prefix="/api")
+app.include_router(backup_router, prefix="/api")
+app.include_router(alerts_router, prefix="/api")
+app.include_router(chunk_upload_router, prefix="/api")
 
 
 # 健康检查

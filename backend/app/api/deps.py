@@ -77,14 +77,24 @@ async def get_current_active_user(
 
 async def get_superuser(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    """验证超级管理员"""
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要超级管理员权限",
-        )
-    return current_user
+    """验证管理员权限(超级管理员或admin角色)"""
+    if current_user.is_superuser:
+        return current_user
+
+    # 检查是否是 admin 角色
+    from app.models.models import Role
+    if current_user.role_id:
+        result = await db.execute(select(Role).where(Role.id == current_user.role_id))
+        role = result.scalar_one_or_none()
+        if role and role.code in ('admin', 'super_admin'):
+            return current_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="需要管理员权限",
+    )
 
 
 async def check_permission(

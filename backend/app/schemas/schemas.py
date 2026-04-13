@@ -6,6 +6,23 @@ from typing import Optional, List
 from pydantic import BaseModel, Field, EmailStr
 
 
+# ==================== 角色相关 ====================
+class RoleBase(BaseModel):
+    name: str = Field(..., max_length=50, description="角色名称")
+    code: str = Field(..., max_length=50, description="角色代码")
+    description: Optional[str] = None
+
+
+class RoleResponse(RoleBase):
+    id: int
+    is_system: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== 用户相关 ====================
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, description="用户名")
@@ -30,6 +47,7 @@ class UserResponse(UserBase):
     id: int
     department_id: Optional[int]
     role_id: Optional[int]
+    role: Optional[RoleResponse] = None
     status: bool
     is_superuser: bool
     last_login: Optional[datetime]
@@ -103,12 +121,6 @@ class DepartmentTree(DepartmentResponse):
 
 
 # ==================== 角色相关 ====================
-class RoleBase(BaseModel):
-    name: str = Field(..., max_length=50, description="角色名称")
-    code: str = Field(..., max_length=50, description="角色代码")
-    description: Optional[str] = None
-
-
 class RoleCreate(RoleBase):
     permission_ids: Optional[List[int]] = []
 
@@ -117,16 +129,6 @@ class RoleUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     permission_ids: Optional[List[int]] = None
-
-
-class RoleResponse(RoleBase):
-    id: int
-    is_system: bool
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # ==================== 文件夹相关 ====================
@@ -156,13 +158,22 @@ class FolderResponse(FolderBase):
 
 
 class FolderTree(FolderResponse):
-    children: List["FolderTree"] = []
+    children: Optional[List["FolderTree"]] = None
 
 
 # ==================== 文件相关 ====================
 class FileBase(BaseModel):
     origin_name: str = Field(..., max_length=255, description="原始文件名")
     remark: Optional[str] = Field(None, description="备注")
+
+
+class FileOwnerInfo(BaseModel):
+    id: int
+    username: str
+    real_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class FileResponse(BaseModel):
@@ -173,6 +184,7 @@ class FileResponse(BaseModel):
     mime_type: Optional[str]
     size: int
     owner_id: int
+    owner: Optional[FileOwnerInfo] = None
     version_no: int
     status: int
     remark: Optional[str]
@@ -238,6 +250,7 @@ class AuditLogResponse(BaseModel):
     user_id: Optional[int]
     username: Optional[str]
     action: str
+    action_name: Optional[str] = None  # 中文操作名称
     target_type: Optional[str]
     target_id: Optional[int]
     target_name: Optional[str]

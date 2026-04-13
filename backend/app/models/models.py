@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, BigInteger, JSON
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+from app.utils.timezone import get_beijing_time
 
 
 class User(Base):
@@ -21,8 +22,8 @@ class User(Base):
     status = Column(Boolean, default=True, comment="状态：启用/禁用")
     is_superuser = Column(Boolean, default=False, comment="是否超级管理员")
     last_login = Column(DateTime, nullable=True, comment="最后登录时间")
-    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime, default=get_beijing_time, comment="创建时间")
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time, comment="更新时间")
 
     # 关联
     department = relationship("Department", back_populates="users")
@@ -39,8 +40,8 @@ class Department(Base):
     parent_id = Column(Integer, ForeignKey("departments.id"), nullable=True, comment="上级部门ID")
     description = Column(Text, nullable=True, comment="描述")
     status = Column(Boolean, default=True, comment="状态")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
     users = relationship("User", back_populates="department")
@@ -56,8 +57,8 @@ class Role(Base):
     code = Column(String(50), unique=True, nullable=False, comment="角色代码")
     description = Column(Text, nullable=True, comment="描述")
     is_system = Column(Boolean, default=False, comment="是否系统内置角色")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
     users = relationship("User", back_populates="role")
@@ -73,7 +74,7 @@ class Permission(Base):
     name = Column(String(100), nullable=False, comment="权限名称")
     category = Column(String(50), comment="权限分类")
     description = Column(Text, nullable=True, comment="描述")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
 
 
 class RolePermission(Base):
@@ -83,7 +84,7 @@ class RolePermission(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     permission_id = Column(Integer, ForeignKey("permissions.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
 
     # 关联
     role = relationship("Role", back_populates="permissions")
@@ -100,8 +101,8 @@ class Folder(Base):
     path = Column(String(1000), comment="完整路径")
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="所有者ID")
     is_deleted = Column(Boolean, default=False, comment="是否删除")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
     owner = relationship("User")
@@ -128,8 +129,8 @@ class File(Base):
     remark = Column(Text, nullable=True, comment="备注")
     extra_json = Column(JSON, nullable=True, comment="扩展信息")
     is_deleted = Column(Boolean, default=False, comment="是否删除")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
     folder = relationship("Folder", back_populates="files")
@@ -148,7 +149,7 @@ class FileVersion(Base):
     size = Column(BigInteger, default=0, comment="文件大小")
     hash_sha256 = Column(String(64), comment="文件哈希")
     created_by = Column(Integer, ForeignKey("users.id"), comment="创建者ID")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
 
     # 关联
     file = relationship("File", back_populates="versions")
@@ -168,7 +169,7 @@ class FilePermission(Base):
     can_download = Column(Boolean, default=True, comment="可下载")
     can_delete = Column(Boolean, default=False, comment="可删除")
     can_manage = Column(Boolean, default=False, comment="可管理")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
 
 
 class AuditLog(Base):
@@ -186,7 +187,7 @@ class AuditLog(Base):
     user_agent = Column(String(500), comment="User-Agent")
     result = Column(Boolean, default=True, comment="操作结果")
     detail = Column(JSON, nullable=True, comment="详细信息")
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=get_beijing_time, index=True)
 
     # 关联
     user = relationship("User")
@@ -206,8 +207,77 @@ class UploadTask(Base):
     upload_id = Column(String(100), unique=True, comment="上传ID")
     status = Column(Integer, default=0, comment="状态：0等待 1上传中 2完成 3失败")
     storage_path = Column(String(1000), comment="存储路径")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
     user = relationship("User")
+
+
+class FileShare(Base):
+    """文件分享表"""
+    __tablename__ = "file_shares"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    file_id = Column(Integer, ForeignKey("files.id"), nullable=False, comment="文件ID")
+    share_code = Column(String(32), unique=True, nullable=False, comment="分享码")
+    password = Column(String(20), nullable=True, comment="访问密码")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, comment="创建者ID")
+    expire_at = Column(DateTime, nullable=True, comment="过期时间")
+    max_downloads = Column(Integer, default=0, comment="最大下载次数，0表示不限")
+    download_count = Column(Integer, default=0, comment="已下载次数")
+    is_active = Column(Boolean, default=True, comment="是否有效")
+    created_at = Column(DateTime, default=datetime.utcnow)  # 使用UTC保持兼容
+
+    # 关联
+    file = relationship("File")
+    creator = relationship("User")
+
+
+class BackupRecord(Base):
+    """备份记录表"""
+    __tablename__ = "backup_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    backup_type = Column(String(20), nullable=False, comment="备份类型：full/data/files")
+    file_path = Column(String(500), nullable=False, comment="备份文件路径")
+    file_size = Column(BigInteger, default=0, comment="文件大小")
+    status = Column(Integer, default=0, comment="状态：0进行中 1成功 2失败")
+    message = Column(Text, nullable=True, comment="备注信息")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建者ID")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    creator = relationship("User")
+
+
+class AuditAlert(Base):
+    """审计告警表"""
+    __tablename__ = "audit_alerts"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    alert_type = Column(String(50), nullable=False, comment="告警类型")
+    severity = Column(String(20), default="warning", comment="严重级别：info/warning/danger")
+    title = Column(String(255), nullable=False, comment="告警标题")
+    content = Column(Text, nullable=True, comment="告警内容")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, comment="相关用户ID")
+    username = Column(String(50), comment="相关用户名")
+    is_read = Column(Boolean, default=False, comment="是否已读")
+    is_handled = Column(Boolean, default=False, comment="是否已处理")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    user = relationship("User")
+
+
+class SystemConfig(Base):
+    """系统配置表"""
+    __tablename__ = "system_configs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    config_key = Column(String(100), unique=True, nullable=False, comment="配置键")
+    config_value = Column(Text, nullable=True, comment="配置值")
+    config_type = Column(String(20), default="string", comment="值类型：string/number/boolean/json")
+    description = Column(String(255), nullable=True, comment="配置说明")
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)

@@ -13,3 +13,4 @@ pydantic-settings==2.3.4
 python-dotenv==1.0.1
 redis==5.0.8
 httpx==0.27.2
+apscheduler==3.10.4
