@@ -376,6 +376,8 @@ const loadMessages = async () => {
   try {
     messages.value = await api.get(`/chat/messages/${currentFriendId.value}`)
     scrollToBottom()
+    // 加载消息后刷新未读数，更新导航栏红点
+    chatStore.fetchUnreadCount()
   } catch (error) {
     console.error('加载消息失败:', error)
   }

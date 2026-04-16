@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.db.session import get_db
-from app.models.models import User, Friendship, ChatMessage
+from app.models.models import User, Friendship, ChatMessage, Notification
 from app.api.deps import get_current_user
 from app.core.notifications import manager
 from app.utils.timezone import get_beijing_time
@@ -90,6 +90,24 @@ async def send_message(
     await db.commit()
     await db.refresh(message)
 
+    # 创建通知记录
+    notification = Notification(
+        user_id=data.receiver_id,
+        notification_type="chat_message",
+        title="新消息",
+        content=f"{current_user.real_name or current_user.username}: {data.content.strip()[:50]}{'...' if len(data.content.strip()) > 50 else ''}",
+        data={
+            "sender_id": current_user.id,
+            "sender_name": current_user.username,
+            "sender_real_name": current_user.real_name,
+            "message_id": message.id
+        },
+        related_id=message.id,
+        related_type="chat_message"
+    )
+    db.add(notification)
+    await db.commit()
+
     msg_data = {
         "id": message.id,
         "sender_id": message.sender_id,
@@ -111,7 +129,8 @@ async def send_message(
             "sender_real_name": current_user.real_name,
             "receiver_id": data.receiver_id,
             "content": message.content,
-            "created_at": message.created_at.isoformat() if message.created_at else None
+            "created_at": message.created_at.isoformat() if message.created_at else None,
+            "notification_id": notification.id
         }
     }, data.receiver_id)
 
