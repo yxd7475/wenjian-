@@ -1,6 +1,7 @@
 <template>
   <div class="notification-center">
     <el-popover
+      ref="popoverRef"
       placement="bottom"
       :width="420"
       trigger="click"
@@ -30,7 +31,8 @@
             v-for="notification in notifications"
             :key="notification.id"
             class="notification-item"
-            :class="{ unread: !notification.is_read }"
+            :class="{ unread: !notification.is_read, clickable: isClickable(notification) }"
+            @click="handleNotificationClick(notification)"
           >
             <div class="notification-icon">
               <el-icon :size="20" :color="getIconColor(notification.notification_type)">
@@ -44,10 +46,10 @@
 
               <!-- 群组邀请操作按钮 -->
               <div v-if="notification.notification_type === 'group_invite' && !notification.is_read && (notification.related_id || notification.data?.invitation_id)" class="notification-actions">
-                <el-button type="primary" size="small" @click="acceptInvite(notification)">
+                <el-button type="primary" size="small" @click.stop="acceptInvite(notification)">
                   接受
                 </el-button>
-                <el-button size="small" @click="rejectInvite(notification)">
+                <el-button size="small" @click.stop="rejectInvite(notification)">
                   拒绝
                 </el-button>
               </div>
@@ -68,6 +70,7 @@ import { notificationService } from '@/utils/notifications'
 import api from '@/utils/api'
 
 const router = useRouter()
+const popoverRef = ref(null)
 
 const notifications = ref([])
 const unreadCount = computed(() => {
@@ -137,6 +140,72 @@ const formatTime = (time) => {
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
   return date.toLocaleDateString('zh-CN')
+}
+
+// 判断通知是否可点击跳转
+const isClickable = (notification) => {
+  const clickableTypes = [
+    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined',
+    'chat_message', 'friend_request', 'friend_accepted', 'file_share'
+  ]
+  return clickableTypes.includes(notification.notification_type)
+}
+
+// 处理通知点击跳转
+const handleNotificationClick = async (notification) => {
+  if (!isClickable(notification)) return
+
+  // 标记为已读
+  if (!notification.is_read) {
+    try {
+      await api.put(`/notifications/${notification.id}/read`)
+      notification.is_read = true
+    } catch (error) {
+      console.error('标记已读失败:', error)
+    }
+  }
+
+  // 关闭弹出框
+  if (popoverRef.value) {
+    popoverRef.value.hide()
+  }
+
+  // 根据通知类型跳转
+  const type = notification.notification_type
+  const data = notification.data || {}
+
+  switch (type) {
+    case 'group_invite':
+    case 'group_invite_accepted':
+    case 'group_invite_rejected':
+    case 'group_joined':
+      // 跳转到群组详情或群组列表
+      if (data.group_id || notification.related_id) {
+        router.push(`/groups/${data.group_id || notification.related_id}`)
+      } else {
+        router.push('/groups')
+      }
+      break
+    case 'chat_message':
+      // 跳转到聊天页面
+      if (data.group_id) {
+        router.push({ path: '/chat', query: { groupId: data.group_id } })
+      } else if (data.sender_id || data.friend_id) {
+        router.push({ path: '/chat', query: { friendId: data.sender_id || data.friend_id } })
+      } else {
+        router.push('/chat')
+      }
+      break
+    case 'friend_request':
+    case 'friend_accepted':
+      // 跳转到好友页面
+      router.push('/friends')
+      break
+    case 'file_share':
+      // 跳转到文件页面
+      router.push('/files')
+      break
+  }
 }
 
 // 接受群组邀请
@@ -290,12 +359,20 @@ defineExpose({
   transition: background-color 0.2s;
 }
 
+.notification-item.clickable {
+  cursor: pointer;
+}
+
 .notification-item:hover {
   background-color: #f5f7fa;
 }
 
 .notification-item.unread {
   background-color: #ecf5ff;
+}
+
+.notification-item.unread.clickable:hover {
+  background-color: #d9ecff;
 }
 
 .notification-icon {
