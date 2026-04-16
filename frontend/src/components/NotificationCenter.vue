@@ -192,6 +192,15 @@ const markAllRead = async () => {
 const handleWebSocketMessage = async (message) => {
   const { type, data } = message
 
+  // 忽略心跳响应和其他非通知消息
+  const notificationTypes = [
+    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined',
+    'chat_message', 'friend_request', 'friend_accepted', 'notification', 'alert'
+  ]
+  if (!notificationTypes.includes(type)) {
+    return
+  }
+
   // 重新加载通知
   await loadNotifications()
 
@@ -220,7 +229,7 @@ const handleWebSocketMessage = async (message) => {
       title = '好友申请已通过'
       break
     default:
-      title = '新通知'
+      return // 不显示提示
   }
 
   if (title) {
