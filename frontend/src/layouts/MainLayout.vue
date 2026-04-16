@@ -237,14 +237,6 @@ const loadFriendRequests = async () => {
   }
 }
 
-// 监听路由变化，进入聊天页面时刷新未读数
-watch(() => route.path, (newPath) => {
-  if (newPath === '/chat') {
-    // 进入聊天页面，稍后刷新未读数（等消息标记已读后）
-    setTimeout(() => chatStore.fetchUnreadCount(), 500)
-  }
-})
-
 onMounted(() => {
   loadSpaces()
   loadGroups()
@@ -330,16 +322,28 @@ const handleWebSocketMessage = (message) => {
 
 // 监听路由变化，刷新相关计数
 watch(() => route.path, (newPath, oldPath) => {
+  // 进入邀请页面时，立即清除红点
+  if (newPath === '/invitations') {
+    pendingInvitations.value = 0
+  }
   // 从邀请页面离开时，刷新邀请计数
   if (oldPath === '/invitations' && newPath !== '/invitations') {
     loadInvitations()
+  }
+
+  // 进入好友页面时，立即清除红点
+  if (newPath === '/friends') {
+    pendingFriendRequests.value = 0
   }
   // 从好友页面离开时，刷新好友申请计数
   if (oldPath === '/friends' && newPath !== '/friends') {
     loadFriendRequests()
   }
-  // 进入聊天页面时，刷新未读数
+
+  // 进入聊天页面时，立即清除红点
   if (newPath === '/chat') {
+    chatStore.unreadCount = 0
+    // 稍后从后端刷新真实数据
     setTimeout(() => chatStore.fetchUnreadCount(), 500)
   }
 })
