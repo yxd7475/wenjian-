@@ -176,6 +176,9 @@ const handleNotificationClick = async (notification) => {
 
   switch (type) {
     case 'group_invite':
+      // 群组邀请跳转到邀请列表页
+      router.push('/invitations')
+      break
     case 'group_invite_accepted':
     case 'group_invite_rejected':
     case 'group_joined':
