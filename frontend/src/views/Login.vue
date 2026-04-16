@@ -33,9 +33,6 @@
           </el-button>
         </el-form-item>
       </el-form>
-      <div style="text-align: center; color: #909399; font-size: 12px; margin-top: 20px">
-        默认账号: admin / admin123
-      </div>
       <div style="text-align: center; margin-top: 16px">
         <span style="color: #909399">还没有账号？</span>
         <router-link to="/register" style="color: #409EFF; text-decoration: none">立即注册</router-link>
