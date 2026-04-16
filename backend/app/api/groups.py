@@ -718,6 +718,8 @@ async def invite_user_to_group(
         status="pending"
     )
     db.add(invitation)
+    await db.flush()  # 获取invitation.id
+    await db.refresh(invitation)
 
     # 创建或更新成员记录（状态为invited）
     if existing_member:
@@ -743,7 +745,8 @@ async def invite_user_to_group(
             "group_id": group.id,
             "group_name": group.name,
             "inviter_id": current_user.id,
-            "inviter_name": current_user.real_name or current_user.username
+            "inviter_name": current_user.real_name or current_user.username,
+            "invitation_id": invitation.id
         },
         related_id=invitation.id,
         related_type="invitation"
