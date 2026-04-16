@@ -3,6 +3,8 @@
 """
 import asyncio
 import os
+import random
+import string
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,9 +12,30 @@ from app.db.session import engine, AsyncSessionLocal, Base
 from app.models.models import (
     User, Role, Permission, Department, RolePermission,
     Folder, File, FileVersion, FilePermission, AuditLog, UploadTask,
-    FileShare, BackupRecord, AuditAlert, SystemConfig
+    FileShare, BackupRecord, AuditAlert, SystemConfig,
+    Space, Group, GroupMember, Invitation, Notification
 )
 from app.core.security import get_password_hash
+
+
+async def generate_unique_id(session: AsyncSession, length: int = 8) -> str:
+    """生成用户唯一标识码"""
+    chars = string.ascii_uppercase + string.digits
+    # 排除容易混淆的字符
+    chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
+
+    max_attempts = 100
+    for _ in range(max_attempts):
+        # 生成格式: 前缀 "U" + 随机字符
+        unique_id = 'U' + ''.join(random.choices(chars, k=length - 1))
+
+        # 检查是否已存在
+        result = await session.execute(select(User).where(User.unique_id == unique_id))
+        if not result.scalar_one_or_none():
+            return unique_id
+
+    # 如果多次尝试都失败，使用更长的ID
+    return 'U' + ''.join(random.choices(chars, k=10))
 
 
 async def create_tables():
@@ -107,8 +130,8 @@ async def init_role_permissions(session: AsyncSession):
             "system:audit",
         ],
         "user": [
-            "file:view", "file:upload", "file:download", "file:rename",
-            "folder:create", "folder:view", "folder:rename",
+            "file:view", "file:upload", "file:download", "file:delete", "file:rename", "file:move", "file:copy", "file:share",
+            "folder:create", "folder:view", "folder:delete", "folder:rename",
         ],
         "guest": [
             "file:view", "file:download",
@@ -165,26 +188,61 @@ async def init_superuser(session: AsyncSession):
     result = await session.execute(
         select(User).where(User.username == "admin")
     )
-    if not result.scalar_one_or_none():
+    admin = result.scalar_one_or_none()
+    if not admin:
         # 获取超级管理员角色
         result = await session.execute(
             select(Role).where(Role.code == "super_admin")
         )
         role = result.scalar_one_or_none()
 
+        # 生成唯一标识码
+        unique_id = await generate_unique_id(session)
+
         admin = User(
             username="admin",
             password_hash=get_password_hash("admin123"),
             real_name="系统管理员",
+            unique_id=unique_id,
             role_id=role.id if role else None,
             is_superuser=True,
             status=True,
         )
         session.add(admin)
         await session.commit()
-        print("[OK] 超级管理员账号创建完成 (用户名: admin, 密码: admin123)")
+        await session.refresh(admin)
+        print(f"[OK] 超级管理员账号创建完成 (用户名: admin, 密码: admin123, 唯一标识码: {unique_id})")
     else:
+        # 为已存在的admin用户添加unique_id（如果没有）
+        if not admin.unique_id:
+            admin.unique_id = await generate_unique_id(session)
+            await session.commit()
+            print(f"[OK] 已为管理员账号生成唯一标识码: {admin.unique_id}")
         print("[OK] 超级管理员账号已存在")
+
+    # 创建管理员空间
+    await init_admin_space(session, admin.id)
+    return admin
+
+
+async def init_admin_space(session: AsyncSession, admin_id: int):
+    """初始化管理员空间"""
+    result = await session.execute(
+        select(Space).where(Space.space_type == "admin")
+    )
+    if not result.scalar_one_or_none():
+        admin_space = Space(
+            name="超级管理员空间",
+            space_type="admin",
+            owner_id=admin_id,
+            description="系统管理空间，存放系统文档、配置等",
+            status=True,
+        )
+        session.add(admin_space)
+        await session.commit()
+        print("[OK] 管理员空间创建完成")
+    else:
+        print("[OK] 管理员空间已存在")
 
 
 async def init_db():

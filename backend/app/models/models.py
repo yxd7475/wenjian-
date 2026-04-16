@@ -2,7 +2,7 @@
 数据库模型定义
 """
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, BigInteger, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey, BigInteger, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from app.utils.timezone import get_beijing_time
@@ -17,6 +17,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False, comment="密码哈希")
     real_name = Column(String(50), comment="真实姓名")
     email = Column(String(100), unique=True, nullable=True, comment="邮箱")
+    unique_id = Column(String(10), unique=True, index=True, nullable=True, comment="用户唯一标识码")
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True, comment="部门ID")
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True, comment="角色ID")
     status = Column(Boolean, default=True, comment="状态：启用/禁用")
@@ -96,6 +97,7 @@ class Folder(Base):
     __tablename__ = "folders"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False, comment="所属空间ID")
     parent_id = Column(Integer, ForeignKey("folders.id"), nullable=True, comment="父文件夹ID")
     name = Column(String(255), nullable=False, comment="文件夹名称")
     path = Column(String(1000), comment="完整路径")
@@ -105,6 +107,7 @@ class Folder(Base):
     updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
+    space = relationship("Space")
     owner = relationship("User")
     children = relationship("Folder", backref="parent", remote_side=[id])
     files = relationship("File", back_populates="folder")
@@ -115,6 +118,7 @@ class File(Base):
     __tablename__ = "files"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False, comment="所属空间ID")
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True, comment="文件夹ID")
     origin_name = Column(String(255), nullable=False, comment="原始文件名")
     stored_name = Column(String(255), nullable=False, comment="存储文件名")
@@ -133,6 +137,7 @@ class File(Base):
     updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
     # 关联
+    space = relationship("Space")
     folder = relationship("Folder", back_populates="files")
     owner = relationship("User")
     versions = relationship("FileVersion", back_populates="file")
@@ -281,3 +286,158 @@ class SystemConfig(Base):
     description = Column(String(255), nullable=True, comment="配置说明")
     created_at = Column(DateTime, default=get_beijing_time)
     updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
+
+
+class Space(Base):
+    """空间表"""
+    __tablename__ = "spaces"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False, comment="空间名称")
+    space_type = Column(String(20), nullable=False, comment="空间类型：admin/personal/group")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, comment="所有者ID（个人空间对应用户）")
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, comment="群组ID（群组空间关联群组）")
+    description = Column(Text, nullable=True, comment="描述")
+    status = Column(Boolean, default=True, comment="状态")
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
+
+    # 关联
+    owner = relationship("User", foreign_keys=[owner_id])
+    group = relationship("Group", back_populates="space", foreign_keys=[group_id])
+
+
+class Group(Base):
+    """群组表"""
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False, comment="群组名称")
+    description = Column(Text, nullable=True, comment="描述")
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="群主ID")
+    invite_code = Column(String(32), unique=True, nullable=True, comment="邀请码")
+    is_public_join = Column(Boolean, default=False, comment="是否公开加入")
+    status = Column(Boolean, default=True, comment="状态")
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
+
+    # 关联
+    owner = relationship("User", foreign_keys=[owner_id])
+    members = relationship("GroupMember", back_populates="group")
+    space = relationship("Space", back_populates="group", uselist=False)
+
+
+class GroupMember(Base):
+    """群组成员表"""
+    __tablename__ = "group_members"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, comment="群组ID")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="用户ID")
+    role = Column(String(20), nullable=False, default="member", comment="角色：owner/manager/member/viewer")
+    join_status = Column(String(20), nullable=False, default="active", comment="状态：invited/active/rejected/left")
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="邀请人ID")
+    joined_at = Column(DateTime, default=get_beijing_time, comment="加入时间")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    group = relationship("Group", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])
+    inviter = relationship("User", foreign_keys=[invited_by])
+
+
+class Invitation(Base):
+    """邀请表"""
+    __tablename__ = "invitations"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, comment="群组ID")
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="邀请人ID")
+    invitee_id = Column(Integer, ForeignKey("users.id"), nullable=True, comment="被邀请人ID")
+    invite_code = Column(String(32), nullable=True, comment="邀请码")
+    status = Column(String(20), nullable=False, default="pending", comment="状态：pending/accepted/rejected/expired")
+    expire_at = Column(DateTime, nullable=True, comment="过期时间")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    group = relationship("Group")
+    inviter = relationship("User", foreign_keys=[inviter_id])
+    invitee = relationship("User", foreign_keys=[invitee_id])
+
+
+class Friendship(Base):
+    """好友关系表"""
+    __tablename__ = "friendships"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    requester_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="发起人ID")
+    addressee_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="接收人ID")
+    status = Column(String(20), nullable=False, default="pending", comment="状态：pending/accepted/rejected/blocked")
+    message = Column(String(200), nullable=True, comment="申请附言")
+    created_at = Column(DateTime, default=get_beijing_time)
+    updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
+
+    # 关联
+    requester = relationship("User", foreign_keys=[requester_id])
+    addressee = relationship("User", foreign_keys=[addressee_id])
+
+    # 联合唯一约束
+    __table_args__ = (
+        UniqueConstraint('requester_id', 'addressee_id', name='unique_friendship'),
+    )
+
+
+class ChatMessage(Base):
+    """聊天消息表"""
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="发送者ID")
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="接收者ID")
+    content = Column(Text, nullable=False, comment="消息内容")
+    is_read = Column(Boolean, default=False, comment="是否已读")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])
+
+
+class GroupChatMessage(Base):
+    """群组聊天消息表"""
+    __tablename__ = "group_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, comment="群组ID")
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="发送者ID")
+    message_type = Column(String(20), default="text", comment="消息类型：text/file/image")
+    content = Column(Text, nullable=False, comment="消息内容")
+    # 文件相关字段
+    file_id = Column(Integer, ForeignKey("files.id"), nullable=True, comment="关联文件ID")
+    file_name = Column(String(255), nullable=True, comment="文件名称")
+    file_size = Column(BigInteger, nullable=True, comment="文件大小")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    group = relationship("Group")
+    sender = relationship("User")
+    file = relationship("File")
+
+
+class Notification(Base):
+    """系统通知表"""
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="接收用户ID")
+    notification_type = Column(String(50), nullable=False, comment="通知类型：friend_request/group_invite/system/file_share/chat")
+    title = Column(String(255), nullable=False, comment="通知标题")
+    content = Column(Text, nullable=True, comment="通知内容")
+    data = Column(JSON, nullable=True, comment="附加数据")
+    related_id = Column(Integer, nullable=True, comment="关联ID")
+    related_type = Column(String(50), nullable=True, comment="关联类型：group/friendship/file等")
+    is_read = Column(Boolean, default=False, comment="是否已读")
+    created_at = Column(DateTime, default=get_beijing_time)
+
+    # 关联
+    user = relationship("User")

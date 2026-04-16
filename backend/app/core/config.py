@@ -4,6 +4,10 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 from functools import lru_cache
+import os
+
+# 获取项目根目录（backend 目录）
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class Settings(BaseSettings):
@@ -24,15 +28,15 @@ class Settings(BaseSettings):
     # Redis配置 (可选)
     REDIS_URL: Optional[str] = None
 
-    # 文件存储配置
-    STORAGE_PATH: str = "./data/storage"
-    UPLOAD_TEMP_PATH: str = "./data/temp"
+    # 文件存储配置 - 使用绝对路径
+    STORAGE_PATH: str = os.path.join(BASE_DIR, "data", "storage")
+    UPLOAD_TEMP_PATH: str = os.path.join(BASE_DIR, "data", "temp")
     MAX_UPLOAD_SIZE: int = 524288000  # 500MB
     ALLOWED_EXTENSIONS: str = "jpg,jpeg,png,gif,bmp,webp,pdf,txt,md,doc,docx,xls,xlsx,ppt,pptx,zip,rar,7z,mp3,mp4,avi,mov"
 
     # 日志配置
     LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "./logs/app.log"
+    LOG_FILE: str = os.path.join(BASE_DIR, "logs", "app.log")
 
     @property
     def allowed_extensions_list(self) -> list:

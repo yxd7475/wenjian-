@@ -45,6 +45,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    unique_id: Optional[str] = None
     department_id: Optional[int]
     role_id: Optional[int]
     role: Optional[RoleResponse] = None
@@ -135,6 +136,7 @@ class RoleUpdate(BaseModel):
 class FolderBase(BaseModel):
     name: str = Field(..., max_length=255, description="文件夹名称")
     parent_id: Optional[int] = Field(None, description="父文件夹ID")
+    space_id: Optional[int] = Field(None, description="所属空间ID")
 
 
 class FolderCreate(FolderBase):
@@ -147,6 +149,7 @@ class FolderRename(BaseModel):
 
 class FolderResponse(FolderBase):
     id: int
+    space_id: Optional[int]
     path: Optional[str]
     owner_id: int
     is_deleted: bool
@@ -178,6 +181,7 @@ class FileOwnerInfo(BaseModel):
 
 class FileResponse(BaseModel):
     id: int
+    space_id: Optional[int]
     folder_id: Optional[int]
     origin_name: str
     ext: Optional[str]

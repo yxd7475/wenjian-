@@ -18,6 +18,53 @@ from app.utils.timezone import get_beijing_time, utc_to_beijing
 
 router = APIRouter(prefix="/audit-logs", tags=["审计日志"])
 
+
+@router.get("/my", response_model=AuditLogListResponse)
+async def get_my_logs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户的操作日志"""
+    query = select(AuditLog).where(AuditLog.user_id == current_user.id)
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar()
+
+    # 分页
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.order_by(AuditLog.created_at.desc())
+
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    items = []
+    for log in logs:
+        items.append(AuditLogResponse(
+            id=log.id,
+            user_id=log.user_id,
+            username=log.username,
+            action=log.action,
+            action_name=get_action_name(log.action),
+            target_type=log.target_type,
+            target_id=log.target_id,
+            target_name=log.target_name,
+            ip=log.ip,
+            result=log.result,
+            detail=log.detail,
+            created_at=utc_to_beijing(log.created_at)
+        ))
+
+    return AuditLogListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 # 操作类型中文翻译
 ACTION_NAMES = {
     "login": "登录",

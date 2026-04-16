@@ -2,12 +2,16 @@
 认证相关 API 路由
 """
 from datetime import datetime
+from typing import Optional
+import random
+import string
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
 from app.db.session import get_db
-from app.models.models import User, AuditLog
+from app.models.models import User, AuditLog, Space, Folder, Role
 from app.schemas import (
     LoginRequest,
     LoginResponse,
@@ -24,6 +28,26 @@ from app.api.deps import get_current_user
 from app.utils.timezone import get_beijing_time
 
 router = APIRouter(prefix="/auth", tags=["认证"])
+
+
+async def generate_unique_id(db: AsyncSession, length: int = 8) -> str:
+    """生成用户唯一标识码"""
+    chars = string.ascii_uppercase + string.digits
+    # 排除容易混淆的字符
+    chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
+
+    max_attempts = 100
+    for _ in range(max_attempts):
+        # 生成格式: 前缀 "U" + 随机字符
+        unique_id = 'U' + ''.join(random.choices(chars, k=length - 1))
+
+        # 检查是否已存在
+        result = await db.execute(select(User).where(User.unique_id == unique_id))
+        if not result.scalar_one_or_none():
+            return unique_id
+
+    # 如果多次尝试都失败，使用更长的ID
+    return 'U' + ''.join(random.choices(chars, k=10))
 
 
 async def log_audit(
@@ -56,6 +80,9 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """用户登录"""
+    # 调试日志
+    print(f"[DEBUG] Login request - username: {data.username}, password: {'*' * len(data.password)}")
+
     # 查询用户（加载role关系）
     result = await db.execute(
         select(User).options(selectinload(User.role)).where(User.username == data.username)
@@ -85,6 +112,25 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="用户已被禁用",
         )
+
+    # 确保用户有个人空间
+    result = await db.execute(
+        select(Space).where(
+            Space.space_type == "personal",
+            Space.owner_id == user.id
+        )
+    )
+    personal_space = result.scalar_one_or_none()
+    if not personal_space:
+        personal_space = Space(
+            name=f"{user.username} 的个人空间",
+            space_type="personal",
+            owner_id=user.id,
+            description=f"{user.real_name or user.username} 的个人文件空间",
+            status=True,
+        )
+        db.add(personal_space)
+        await db.commit()
 
     # 更新最后登录时间
     user.last_login = get_beijing_time()
@@ -154,3 +200,98 @@ async def change_password(
     )
 
     return MessageResponse(message="密码修改成功")
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    real_name: Optional[str] = None
+    email: Optional[str] = None
+
+
+@router.post("/register", response_model=LoginResponse)
+async def register(
+    request: Request,
+    data: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """用户注册"""
+    # 检查用户名是否存在
+    result = await db.execute(select(User).where(User.username == data.username))
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户名已存在",
+        )
+
+    # 检查邮箱
+    if data.email:
+        result = await db.execute(select(User).where(User.email == data.email))
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="邮箱已被使用",
+            )
+
+    # 获取普通用户角色
+    result = await db.execute(select(Role).where(Role.code == "user"))
+    user_role = result.scalar_one_or_none()
+
+    # 生成唯一标识码
+    unique_id = await generate_unique_id(db)
+
+    # 创建用户
+    user = User(
+        username=data.username,
+        password_hash=get_password_hash(data.password),
+        real_name=data.real_name or data.username,
+        email=data.email,
+        unique_id=unique_id,
+        role_id=user_role.id if user_role else None,
+        status=True,
+        is_superuser=False,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    # 创建个人空间
+    space = Space(
+        name=f"{user.username} 的个人空间",
+        space_type="personal",
+        owner_id=user.id,
+        description=f"{user.real_name} 的个人文件空间",
+        status=True,
+    )
+    db.add(space)
+    await db.commit()
+    await db.refresh(space)
+
+    # 创建根文件夹
+    root_folder = Folder(
+        space_id=space.id,
+        parent_id=None,
+        name="根目录",
+        path="/",
+        owner_id=user.id,
+        is_deleted=False,
+    )
+    db.add(root_folder)
+    await db.commit()
+
+    # 记录审计日志
+    await log_audit(db, user.id, user.username, "register", request)
+
+    # 自动登录 - 生成令牌
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    # 重新加载用户以获取role关系
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+
+    return LoginResponse(
+        access_token=access_token,
+        user=UserResponse.model_validate(user),
+    )

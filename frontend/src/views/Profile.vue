@@ -14,6 +14,15 @@
           <el-divider />
           <el-descriptions :column="1">
             <el-descriptions-item label="用户名">{{ userStore.user?.username }}</el-descriptions-item>
+            <el-descriptions-item label="唯一标识码">
+              <div class="unique-id-box">
+                <span class="unique-id-value">{{ userStore.user?.unique_id || '-' }}</span>
+                <el-button v-if="userStore.user?.unique_id" size="small" text type="primary" @click="copyUniqueId">
+                  复制
+                </el-button>
+              </div>
+              <div class="unique-id-tip">分享此标识码，好友可直接搜索添加</div>
+            </el-descriptions-item>
             <el-descriptions-item label="邮箱">{{ userStore.user?.email || '-' }}</el-descriptions-item>
             <el-descriptions-item label="最后登录">{{ formatDate(userStore.user?.last_login) }}</el-descriptions-item>
             <el-descriptions-item label="注册时间">{{ formatDate(userStore.user?.created_at) }}</el-descriptions-item>
@@ -297,8 +306,8 @@ const loadMyFiles = async () => {
 const loadMyLogs = async () => {
   logsLoading.value = true
   try {
-    const res = await api.get('/audit-logs', {
-      params: { page: logsPage.value, page_size: logsPageSize.value, user_id: userStore.user.id }
+    const res = await api.get('/audit-logs/my', {
+      params: { page: logsPage.value, page_size: logsPageSize.value }
     })
     myLogs.value = res.items || []
     logsTotal.value = res.total || 0
@@ -332,6 +341,15 @@ const downloadFile = async (file) => {
     window.URL.revokeObjectURL(url)
   } catch (error) {
     ElMessage.error('下载失败')
+  }
+}
+
+const copyUniqueId = async () => {
+  try {
+    await navigator.clipboard.writeText(userStore.user?.unique_id || '')
+    ElMessage.success('唯一标识码已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
   }
 }
 
@@ -393,5 +411,22 @@ onMounted(() => {
   text-align: right;
   color: #909399;
   font-size: 13px;
+}
+.unique-id-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.unique-id-value {
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: bold;
+  color: #409EFF;
+  letter-spacing: 1px;
+}
+.unique-id-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 </style>

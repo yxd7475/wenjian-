@@ -1,13 +1,16 @@
 """
 用户管理 API 路由
 """
-from typing import Optional
+from typing import Optional, List
+import random
+import string
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
 from app.db.session import get_db
-from app.models.models import User, Department, Role, AuditLog
+from app.models.models import User, Department, Role, AuditLog, Space, Folder, Friendship
 from app.schemas import (
     UserCreate,
     UserUpdate,
@@ -20,6 +23,81 @@ from app.core.security import get_password_hash
 from app.api.deps import get_current_user, get_superuser
 
 router = APIRouter(prefix="/users", tags=["用户管理"])
+
+
+async def generate_unique_id(db: AsyncSession, length: int = 8) -> str:
+    """生成用户唯一标识码"""
+    chars = string.ascii_uppercase + string.digits
+    # 排除容易混淆的字符
+    chars = chars.replace('O', '').replace('0', '').replace('I', '').replace('1', '').replace('L', '')
+
+    max_attempts = 100
+    for _ in range(max_attempts):
+        # 生成格式: 前缀 "U" + 随机字符
+        unique_id = 'U' + ''.join(random.choices(chars, k=length - 1))
+
+        # 检查是否已存在
+        result = await db.execute(select(User).where(User.unique_id == unique_id))
+        if not result.scalar_one_or_none():
+            return unique_id
+
+    # 如果多次尝试都失败，使用更长的ID
+    return 'U' + ''.join(random.choices(chars, k=10))
+
+
+class SimpleUserResponse(BaseModel):
+    id: int
+    username: str
+    real_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/simple", response_model=List[SimpleUserResponse])
+async def get_simple_users(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取用户简要列表（用于邀请等功能）"""
+    # 超级管理员可以看所有用户
+    if current_user.is_superuser or (current_user.role and current_user.role.code in ["super_admin", "admin"]):
+        result = await db.execute(
+            select(User).where(User.status == True).order_by(User.username)
+        )
+        users = result.scalars().all()
+        return [SimpleUserResponse.model_validate(u) for u in users]
+
+    # 普通用户只能看好友
+    from sqlalchemy import or_
+
+    result = await db.execute(
+        select(Friendship).where(
+            or_(
+                Friendship.requester_id == current_user.id,
+                Friendship.addressee_id == current_user.id
+            ),
+            Friendship.status == "accepted"
+        )
+    )
+    friendships = result.scalars().all()
+
+    # 获取好友用户ID
+    friend_ids = set()
+    for f in friendships:
+        if f.requester_id == current_user.id:
+            friend_ids.add(f.addressee_id)
+        else:
+            friend_ids.add(f.requester_id)
+
+    if not friend_ids:
+        return []
+
+    result = await db.execute(
+        select(User).where(User.id.in_(friend_ids), User.status == True).order_by(User.username)
+    )
+    users = result.scalars().all()
+    return [SimpleUserResponse.model_validate(u) for u in users]
 
 
 @router.get("", response_model=UserListResponse)
@@ -87,18 +165,46 @@ async def create_user(
                 detail="邮箱已被使用",
             )
 
+    # 生成唯一标识码
+    unique_id = await generate_unique_id(db)
+
     # 创建用户
     user = User(
         username=data.username,
         password_hash=get_password_hash(data.password),
         real_name=data.real_name,
         email=data.email,
+        unique_id=unique_id,
         department_id=data.department_id,
         role_id=data.role_id,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # 创建个人空间
+    space = Space(
+        name=f"{user.username} 的个人空间",
+        space_type="personal",
+        owner_id=user.id,
+        description=f"{user.real_name or user.username} 的个人文件空间",
+        status=True
+    )
+    db.add(space)
+    await db.commit()
+    await db.refresh(space)
+
+    # 创建根文件夹
+    root_folder = Folder(
+        space_id=space.id,
+        parent_id=None,
+        name="根目录",
+        path="/",
+        owner_id=user.id,
+        is_deleted=False
+    )
+    db.add(root_folder)
+    await db.commit()
 
     # 记录日志
     log = AuditLog(

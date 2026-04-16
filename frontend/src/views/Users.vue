@@ -181,14 +181,17 @@ const loadUsers = async () => {
   try {
     const params = {
       page: page.value,
-      page_size: pageSize.value,
-      username: searchUsername.value || undefined
+      page_size: pageSize.value
+    }
+    if (searchUsername.value) {
+      params.username = searchUsername.value
     }
     const res = await api.get('/users', { params })
     users.value = res.items
     total.value = res.total
   } catch (error) {
     console.error('加载用户失败:', error)
+    ElMessage.error('加载用户列表失败')
   } finally {
     loading.value = false
   }

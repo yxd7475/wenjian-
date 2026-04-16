@@ -39,12 +39,43 @@
         <el-button type="primary" @click="verifyPassword" style="width: 100%">验证密码</el-button>
       </el-form>
 
-      <!-- 下载按钮 -->
+      <!-- 下载区域 -->
       <div v-else style="text-align: center">
-        <el-button type="primary" size="large" @click="downloadFile" :loading="downloading">
+        <!-- 下载进度 -->
+        <div v-if="downloading" style="margin-bottom: 20px">
+          <el-progress
+            :percentage="downloadProgress"
+            :format="progressFormat"
+            :stroke-width="20"
+            striped
+            striped-flow
+          />
+          <p style="margin-top: 10px; color: #909399">
+            已下载 {{ formatSize(downloadedSize) }} / {{ formatSize(shareInfo.file_size) }}
+          </p>
+          <p style="color: #909399">{{ downloadSpeed }}</p>
+        </div>
+
+        <el-button
+          type="primary"
+          size="large"
+          @click="downloadFile"
+          :loading="downloading"
+          :disabled="downloading"
+        >
           <el-icon style="margin-right: 8px"><Download /></el-icon>
-          下载文件
+          {{ downloading ? '下载中...' : '下载文件' }}
         </el-button>
+
+        <!-- 大文件提示 -->
+        <el-alert
+          v-if="shareInfo.file_size > 100 * 1024 * 1024"
+          type="info"
+          :closable="false"
+          style="margin-top: 15px"
+        >
+          文件较大，请耐心等待下载完成
+        </el-alert>
       </div>
     </el-card>
   </div>
@@ -63,6 +94,9 @@ const shareInfo = ref(null)
 const password = ref('')
 const passwordVerified = ref(false)
 const downloading = ref(false)
+const downloadProgress = ref(0)
+const downloadedSize = ref(0)
+const downloadSpeed = ref('')
 
 const formatSize = (bytes) => {
   if (!bytes) return '0 B'
@@ -75,6 +109,10 @@ const formatSize = (bytes) => {
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('zh-CN')
+}
+
+const progressFormat = (percentage) => {
+  return percentage === 100 ? '完成' : `${percentage}%`
 }
 
 const loadShareInfo = async () => {
@@ -121,6 +159,9 @@ const verifyPassword = async () => {
 const downloadFile = async () => {
   const shareCode = route.params.code
   downloading.value = true
+  downloadProgress.value = 0
+  downloadedSize.value = 0
+  downloadSpeed.value = ''
 
   try {
     const response = await fetch(`/api/shares/${shareCode}/download`, {
@@ -136,21 +177,65 @@ const downloadFile = async () => {
       throw new Error(data.detail || '下载失败')
     }
 
-    const blob = await response.blob()
+    // 获取文件总大小
+    const contentLength = response.headers.get('content-length')
+    const totalSize = contentLength ? parseInt(contentLength, 10) : shareInfo.value.file_size
+
+    // 读取流并显示进度
+    const reader = response.body.getReader()
+    const chunks = []
+    let receivedLength = 0
+    let startTime = Date.now()
+    let lastUpdateTime = startTime
+    let lastReceivedLength = 0
+
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) break
+
+      chunks.push(value)
+      receivedLength += value.length
+      downloadedSize.value = receivedLength
+
+      // 更新进度
+      if (totalSize > 0) {
+        downloadProgress.value = Math.round((receivedLength / totalSize) * 100)
+      }
+
+      // 计算下载速度（每500ms更新一次）
+      const now = Date.now()
+      if (now - lastUpdateTime > 500) {
+        const timeDiff = (now - lastUpdateTime) / 1000
+        const bytesDiff = receivedLength - lastReceivedLength
+        const speed = bytesDiff / timeDiff
+        downloadSpeed.value = `下载速度: ${formatSize(speed)}/s`
+        lastUpdateTime = now
+        lastReceivedLength = receivedLength
+      }
+    }
+
+    // 创建下载
+    const blob = new Blob(chunks)
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = shareInfo.value.file_name
+    document.body.appendChild(link)
     link.click()
+    document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
 
     // 更新下载次数
     shareInfo.value.download_count++
+    downloadProgress.value = 100
     ElMessage.success('下载成功')
   } catch (err) {
     ElMessage.error(err.message || '下载失败')
+    downloadProgress.value = 0
   } finally {
     downloading.value = false
+    downloadSpeed.value = ''
   }
 }
 

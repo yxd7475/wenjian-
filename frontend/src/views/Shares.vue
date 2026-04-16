@@ -83,7 +83,15 @@ const formatDate = (dateStr) => {
 }
 
 const getShareLink = (share) => {
-  return `${window.location.origin}/share/${share.share_code}`
+  // 如果是localhost访问，尝试使用局域网IP
+  let baseUrl = window.location.origin
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    const configIp = localStorage.getItem('server_ip')
+    if (configIp) {
+      baseUrl = `${window.location.protocol}//${configIp}:${window.location.port}`
+    }
+  }
+  return `${baseUrl}/share/${share.share_code}`
 }
 
 const getShareStatus = (share) => {

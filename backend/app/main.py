@@ -4,7 +4,7 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +17,16 @@ from app.api.shares import router as shares_router
 from app.api.backup import router as backup_router
 from app.api.alerts import router as alerts_router
 from app.api.chunk_upload import router as chunk_upload_router
+from app.api.spaces import router as spaces_router
+from app.api.groups import router as groups_router
+from app.api.invitations import router as invitations_router
+from app.api.friends import router as friends_router
+from app.api.chat import router as chat_router
+from app.api.group_chat import router as group_chat_router
+from app.api.notifications import router as notifications_router
 from app.utils.scheduler import setup_scheduler
+from app.core.notifications import manager
+from app.core.security import decode_access_token
 
 # 配置日志
 logging.basicConfig(
@@ -98,12 +107,54 @@ app.include_router(shares_router, prefix="/api")
 app.include_router(backup_router, prefix="/api")
 app.include_router(alerts_router, prefix="/api")
 app.include_router(chunk_upload_router, prefix="/api")
+app.include_router(spaces_router, prefix="/api")
+app.include_router(groups_router, prefix="/api")
+app.include_router(invitations_router, prefix="/api")
+app.include_router(friends_router, prefix="/api")
+app.include_router(chat_router, prefix="/api")
+app.include_router(group_chat_router, prefix="/api")
+app.include_router(notifications_router, prefix="/api")
 
 
 # 健康检查
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "app_name": settings.APP_NAME}
+
+
+# WebSocket 端点
+@app.websocket("/ws/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """WebSocket 连接端点"""
+    # 验证token
+    payload = decode_access_token(token)
+    if not payload:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    user_id = int(user_id)
+
+    # 建立连接
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            # 接收消息（心跳或其他）
+            data = await websocket.receive_text()
+            # 处理心跳
+            if data == "ping":
+                await websocket.send_json({"type": "pong"})
+            else:
+                # 其他消息原样返回确认
+                await websocket.send_json({"type": "ack", "message": "received"})
+    except Exception:
+        pass
+    finally:
+        manager.disconnect(websocket, user_id)
 
 
 # 根路径

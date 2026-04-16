@@ -298,7 +298,7 @@
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">单个文件最大 500MB，支持常见文件格式</div>
+          <div class="el-upload__tip">支持常见文件格式</div>
           <div v-if="uploadProgress > 0" class="upload-progress">
             <el-progress :percentage="uploadProgress" :status="uploadStatus" />
           </div>
@@ -445,6 +445,16 @@
             </template>
           </el-input>
         </el-form-item>
+        <el-form-item label="服务器地址" v-if="isLocalhost">
+          <el-input v-model="serverIp" placeholder="输入局域网IP，如 10.18.53.55">
+            <template #append>
+              <el-button @click="saveServerIp">保存</el-button>
+            </template>
+          </el-input>
+          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+            局域网分享时需配置此电脑的IP地址
+          </div>
+        </el-form-item>
         <el-form-item label="访问密码" v-if="shareResult?.password">
           <el-input :value="shareResult.password" readonly />
         </el-form-item>
@@ -486,6 +496,7 @@ const currentFolderId = ref(null)
 const breadcrumbs = ref([])
 const selectedItems = ref([])
 const tableRef = ref(null)
+const personalSpaceId = ref(null)
 
 // 视图和排序
 const viewMode = ref(localStorage.getItem('viewMode') || 'list')
@@ -551,7 +562,16 @@ const shareForm = ref({
 
 const shareLink = computed(() => {
   if (!shareResult.value) return ''
-  return `${window.location.origin}/share/${shareResult.value.share_code}`
+  // 如果是localhost访问，尝试使用局域网IP
+  let baseUrl = window.location.origin
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // 尝试从localStorage获取配置的IP
+    const configIp = localStorage.getItem('server_ip')
+    if (configIp) {
+      baseUrl = `${window.location.protocol}//${configIp}:${window.location.port}`
+    }
+  }
+  return `${baseUrl}/share/${shareResult.value.share_code}`
 })
 
 // 上传配置
@@ -562,6 +582,7 @@ const uploadHeaders = computed(() => ({
 const uploadData = computed(() => {
   const data = {}
   if (currentFolderId.value) data.folder_id = currentFolderId.value
+  if (personalSpaceId.value) data.space_id = personalSpaceId.value
   return data
 })
 
@@ -645,21 +666,34 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleString('zh-CN')
 }
 
+const loadPersonalSpace = async () => {
+  try {
+    const spaces = await api.get('/spaces')
+    const personalSpace = spaces.find(s => s.space_type === 'personal')
+    if (personalSpace) {
+      personalSpaceId.value = personalSpace.id
+    }
+  } catch (error) {
+    console.error('获取个人空间失败:', error)
+  }
+}
+
 const loadFiles = async () => {
   loading.value = true
   try {
-    const foldersRes = await api.get('/files/folders/tree')
+    const params = {
+      page: page.value,
+      page_size: pageSize.value,
+      folder_id: currentFolderId.value || undefined,
+      keyword: advancedFilters.value.keyword || undefined,
+      space_id: personalSpaceId.value || undefined
+    }
+    const foldersRes = await api.get('/files/folders/tree', { params: { space_id: personalSpaceId.value } })
     const allFolders = flattenFolders(foldersRes || [])
     const currentFolders = allFolders
       .filter(f => f.parent_id === currentFolderId.value)
       .map(f => ({ ...f, is_folder: true, origin_name: f.name }))
 
-    const params = {
-      page: page.value,
-      page_size: pageSize.value,
-      folder_id: currentFolderId.value || undefined,
-      keyword: advancedFilters.value.keyword || undefined
-    }
     const res = await api.get('/files', { params })
     files.value = [...currentFolders, ...res.items]
     total.value = res.total + currentFolders.length
@@ -689,7 +723,7 @@ const goBack = () => {
 
 const loadFolders = async () => {
   try {
-    folders.value = await api.get('/files/folders/tree') || []
+    folders.value = await api.get('/files/folders/tree', { params: { space_id: personalSpaceId.value } }) || []
   } catch (error) {
     console.error('加载文件夹失败:', error)
   }
@@ -787,13 +821,25 @@ const copyShareLink = () => {
   ElMessage.success('链接已复制到剪贴板')
 }
 
+// 局域网IP配置
+const isLocalhost = computed(() => {
+  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+})
+const serverIp = ref(localStorage.getItem('server_ip') || '')
+const saveServerIp = () => {
+  if (serverIp.value) {
+    localStorage.setItem('server_ip', serverIp.value)
+    ElMessage.success('服务器地址已保存')
+  }
+}
+
 const createFolder = async () => {
   if (!newFolderName.value.trim()) {
     ElMessage.warning('请输入文件夹名称')
     return
   }
   try {
-    await api.post('/files/folders', { name: newFolderName.value, parent_id: currentFolderId.value })
+    await api.post('/files/folders', { name: newFolderName.value, parent_id: currentFolderId.value, space_id: personalSpaceId.value })
     ElMessage.success('文件夹创建成功')
     showFolderDialog.value = false
     newFolderName.value = ''
@@ -805,10 +851,7 @@ const createFolder = async () => {
 }
 
 const beforeUpload = (file) => {
-  if (file.size > 500 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 500MB')
-    return false
-  }
+  // 本地系统不限制文件大小
   return true
 }
 
@@ -1058,7 +1101,8 @@ const handleClickOutside = () => {
   if (contextMenuVisible.value) hideContextMenu()
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadPersonalSpace()
   loadFiles()
   loadFolders()
   document.addEventListener('click', handleClickOutside)

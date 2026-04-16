@@ -67,23 +67,31 @@ async def get_large_files(
     current_user: User = Depends(get_superuser),
 ):
     """获取大文件排行"""
+    from sqlalchemy.orm import selectinload
+
     result = await db.execute(
         select(File)
+        .options(selectinload(File.owner))
         .where(File.is_deleted == False)
         .order_by(desc(File.size))
         .limit(limit)
     )
     files = result.scalars().all()
-    return [
-        {
+
+    result_list = []
+    for f in files:
+        owner_username = None
+        if f.owner:
+            owner_username = f.owner.username
+        result_list.append({
             "id": f.id,
             "origin_name": f.origin_name,
             "size": f.size,
-            "owner": {"username": f.owner.username if f.owner else None},
+            "owner": {"username": owner_username},
             "created_at": f.created_at
-        }
-        for f in files
-    ]
+        })
+
+    return result_list
 
 
 @router.get("/file-types", response_model=List[FileTypeStat])

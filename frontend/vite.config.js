@@ -14,7 +14,15 @@ export default defineConfig({
     port: 3088,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8095',
+        changeOrigin: true
+      },
+      '/ws': {
+        target: 'ws://localhost:8095',
+        ws: true
+      },
+      '/storage': {
+        target: 'http://localhost:8095',
         changeOrigin: true
       }
     }

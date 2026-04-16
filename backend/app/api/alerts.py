@@ -13,6 +13,7 @@ from app.models.models import User, AuditLog, AuditAlert, File
 from app.api.deps import get_current_user, get_superuser
 from app.api.files import log_audit
 from app.utils.timezone import get_beijing_time
+from app.core.notifications import manager
 
 router = APIRouter(prefix="/alerts", tags=["审计告警"])
 
@@ -60,6 +61,36 @@ async def create_alert(
     )
     db.add(alert)
     await db.commit()
+    await db.refresh(alert)
+
+    # 实时推送告警给所有管理员
+    await broadcast_alert_to_admins(db, {
+        "id": alert.id,
+        "alert_type": alert_type,
+        "severity": severity,
+        "title": title,
+        "content": content,
+        "username": username,
+        "created_at": alert.created_at.isoformat()
+    })
+
+    return alert
+
+
+async def broadcast_alert_to_admins(db, alert_data):
+    """向所有管理员推送告警"""
+    # 获取所有管理员用户
+    result = await db.execute(
+        select(User).where(User.role_id == 1, User.status == True)  # role_id=1 是管理员
+    )
+    admins = result.scalars().all()
+
+    # 推送告警给每个管理员
+    for admin in admins:
+        await manager.send_personal_message({
+            "type": "alert",
+            "data": alert_data
+        }, admin.id)
 
 
 async def check_and_create_alerts(db, action: str, user: User, target_name: str, result: bool, detail: dict = None):

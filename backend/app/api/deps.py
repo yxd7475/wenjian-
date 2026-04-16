@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.models import User, Permission, RolePermission
 from app.core.security import decode_access_token
@@ -44,7 +45,9 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    result = await db.execute(
+        select(User).options(selectinload(User.role)).where(User.id == int(user_id))
+    )
     user = result.scalar_one_or_none()
 
     if not user:
@@ -139,3 +142,97 @@ def require_permission(permission_code: str):
     ) -> User:
         return await check_permission(permission_code, current_user, db)
     return permission_checker
+
+
+async def check_space_access(
+    space_id: int,
+    current_user: User,
+    db: AsyncSession,
+) -> "Space":
+    """检查空间访问权限并返回空间对象"""
+    from app.models.models import Space, GroupMember
+
+    result = await db.execute(
+        select(Space).where(Space.id == space_id)
+    )
+    space = result.scalar_one_or_none()
+
+    if not space:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="空间不存在"
+        )
+
+    if space.space_type == "admin":
+        if not (current_user.is_superuser or (current_user.role and current_user.role.code in ["super_admin", "admin"])):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权访问此空间"
+            )
+
+    elif space.space_type == "personal":
+        if space.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权访问此空间"
+            )
+
+    elif space.space_type == "group":
+        result = await db.execute(
+            select(GroupMember).where(
+                GroupMember.group_id == space.group_id,
+                GroupMember.user_id == current_user.id,
+                GroupMember.join_status == "active"
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权访问此空间"
+            )
+
+    return space
+
+
+async def get_space_role(
+    space_id: int,
+    current_user: User,
+    db: AsyncSession,
+) -> str:
+    """获取用户在空间中的角色"""
+    from app.models.models import Space, GroupMember
+
+    result = await db.execute(
+        select(Space).where(Space.id == space_id)
+    )
+    space = result.scalar_one_or_none()
+
+    if not space:
+        return "none"
+
+    if space.space_type == "admin":
+        if current_user.is_superuser or (current_user.role and current_user.role.code == "super_admin"):
+            return "owner"
+        elif current_user.role and current_user.role.code == "admin":
+            return "manager"
+        return "none"
+
+    elif space.space_type == "personal":
+        if space.owner_id == current_user.id:
+            return "owner"
+        return "none"
+
+    elif space.space_type == "group":
+        result = await db.execute(
+            select(GroupMember).where(
+                GroupMember.group_id == space.group_id,
+                GroupMember.user_id == current_user.id,
+                GroupMember.join_status == "active"
+            )
+        )
+        member = result.scalar_one_or_none()
+        if member:
+            return member.role
+        return "none"
+
+    return "none"
