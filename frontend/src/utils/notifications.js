@@ -263,6 +263,26 @@ class NotificationService {
         title: '好友申请已接受',
         body: `${data?.username || '对方'} 已接受你的好友申请`
       },
+      'group_invite': {
+        sound: 'default',
+        title: '群组邀请',
+        body: `${data?.inviter_name || '有人'} 邀请您加入群组「${data?.group_name || ''}」`
+      },
+      'group_invite_accepted': {
+        sound: 'success',
+        title: '邀请已接受',
+        body: `${data?.user_name || '对方'} 已接受您的群组邀请`
+      },
+      'group_invite_rejected': {
+        sound: 'warning',
+        title: '邀请被拒绝',
+        body: `${data?.user_name || '对方'} 拒绝了您的群组邀请`
+      },
+      'group_joined': {
+        sound: 'success',
+        title: '已加入群组',
+        body: `您已加入群组「${data?.group_name || ''}」`
+      },
       'invitation': {
         sound: 'default',
         title: '群组邀请',

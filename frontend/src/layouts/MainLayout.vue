@@ -277,15 +277,36 @@ const handleWebSocketMessage = (message) => {
       loadFriendRequests()
       break
 
-    case 'invitation':
+    case 'group_invite':
       // 群组邀请
+      pendingInvitations.value++
+      break
+
+    case 'group_invite_accepted':
+      // 邀请被接受，刷新群组列表
+      loadGroups()
+      loadInvitations()
+      break
+
+    case 'group_invite_rejected':
+      // 邀请被拒绝，刷新邀请列表
+      loadInvitations()
+      break
+
+    case 'group_joined':
+      // 加入群组成功，刷新群组列表
+      loadGroups()
+      break
+
+    case 'invitation':
+      // 群组邀请（旧类型，兼容）
       pendingInvitations.value++
       break
 
     case 'invitation_accepted':
       // 邀请被接受，刷新群组列表
       loadGroups()
-      loadInvitations()  // 刷新邀请列表
+      loadInvitations()
       break
 
     case 'chat_message':
