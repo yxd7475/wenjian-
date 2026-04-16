@@ -495,7 +495,8 @@ const shouldShowTime = (msg) => {
 
 const getFileUrl = (fileId) => {
   if (!fileId) return ''
-  return `/api/files/${fileId}/download`
+  const token = localStorage.getItem('token')
+  return `/api/files/${fileId}/download?token=${token}`
 }
 
 const loadGroup = async () => {
@@ -614,7 +615,8 @@ const uploadAndSendFile = async (file, type) => {
 // 下载文件
 const downloadFile = async (msg) => {
   if (!msg.file_id) return
-  window.open(`/api/files/${msg.file_id}/download`, '_blank')
+  const token = localStorage.getItem('token')
+  window.open(`/api/files/${msg.file_id}/download?token=${token}`, '_blank')
 }
 
 // 预览图片
