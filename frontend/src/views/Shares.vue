@@ -76,6 +76,24 @@ import api from '@/utils/api'
 
 const shares = ref([])
 const loading = ref(false)
+const serverIp = ref(null)
+
+// 获取服务器 IP
+const fetchServerIp = async () => {
+  if (serverIp.value) return serverIp.value
+  try {
+    const data = await api.get('/auth/server-info')
+    if (data.local_ips && data.local_ips.length > 0) {
+      // 优先选择非 172.x（WSL）的 IP
+      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.'))
+      serverIp.value = preferredIp || data.local_ips[0]
+    }
+    return serverIp.value
+  } catch (error) {
+    console.error('获取服务器 IP 失败:', error)
+    return null
+  }
+}
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -83,13 +101,9 @@ const formatDate = (dateStr) => {
 }
 
 const getShareLink = (share) => {
-  // 如果是localhost访问，尝试使用局域网IP
   let baseUrl = window.location.origin
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    const configIp = localStorage.getItem('server_ip')
-    if (configIp) {
-      baseUrl = `${window.location.protocol}//${configIp}:${window.location.port}`
-    }
+  if (serverIp.value) {
+    baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
   }
   return `${baseUrl}/share/${share.share_code}`
 }
@@ -146,7 +160,8 @@ const deleteShare = async (share) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchServerIp()
   loadShares()
 })
 </script>

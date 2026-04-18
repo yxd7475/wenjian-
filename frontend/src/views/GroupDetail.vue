@@ -177,6 +177,16 @@
                     {{ getRoleName(member.role) }}
                   </el-tag>
                 </div>
+                <el-button
+                  v-if="canManage && member.role !== 'owner'"
+                  type="danger"
+                  size="small"
+                  text
+                  @click="kickMember(member)"
+                  class="kick-btn"
+                >
+                  移除
+                </el-button>
               </div>
             </div>
           </div>
@@ -507,6 +517,10 @@ const loadGroup = async () => {
       name: group.value.name,
       description: group.value.description || ''
     }
+    // 标记该群组的消息通知为已读
+    await api.put(`/notifications/read-group/${groupId.value}`)
+    // 通知群组列表刷新红点
+    window.dispatchEvent(new CustomEvent('group-notifications-read', { detail: { groupId: groupId.value } }))
   } catch (error) {
     ElMessage.error('加载群组信息失败')
   }
@@ -633,8 +647,18 @@ const scrollToBottom = () => {
 }
 
 // 查看群组文件
-const showGroupFiles = () => {
-  router.push(`/spaces?group=${groupId.value}`)
+const showGroupFiles = async () => {
+  try {
+    // 获取群组关联的空间
+    const spaces = await api.get(`/spaces/group/${groupId.value}`)
+    if (spaces && spaces.length > 0) {
+      router.push(`/space/${spaces[0].id}`)
+    } else {
+      ElMessage.warning('群组空间不存在')
+    }
+  } catch (error) {
+    ElMessage.error('获取群组空间失败')
+  }
 }
 
 // 处理实时群组消息
@@ -763,9 +787,9 @@ const sendBatchInvite = async () => {
       expire_days: inviteExpireDays.value
     })
     if (result.failed_count > 0) {
-      ElMessage.warning(`成功邀请 ${result.success_count} 人，${result.failed_count} 人邀请失败`)
+      ElMessage.warning(`已向 ${result.success_count} 人发送邀请，${result.failed_count} 人发送失败`)
     } else {
-      ElMessage.success(`已成功邀请 ${result.success_count} 人`)
+      ElMessage.success(`已向 ${result.success_count} 人发送邀请，等待对方确认`)
     }
     selectedUserIds.value = []
     showInviteDialog.value = false
@@ -1099,6 +1123,15 @@ watch(groupId, (newId) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kick-btn {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.member-item:hover .kick-btn {
+  opacity: 1;
 }
 
 .slide-enter-active,

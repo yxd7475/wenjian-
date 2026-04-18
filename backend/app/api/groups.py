@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.models.models import User, Group, GroupMember, Space, Folder
+from app.models.models import User, Group, GroupMember, Space, Folder, Notification
 from app.api.deps import get_current_user
 from app.api.files import log_audit
+from app.core.notifications import manager
 
 router = APIRouter(prefix="/groups", tags=["群组管理"])
 
@@ -37,6 +38,7 @@ class GroupResponse(BaseModel):
     status: bool
     member_count: int = 0
     space_id: Optional[int] = None
+    unread_count: int = 0
 
     class Config:
         from_attributes = True
@@ -160,6 +162,18 @@ async def list_groups(
         )
         space = result.scalar_one_or_none()
 
+        # 获取未读消息数（群组消息通知）
+        result = await db.execute(
+            select(Notification).where(
+                Notification.user_id == current_user.id,
+                Notification.notification_type == "group_chat_message",
+                Notification.related_id == group.id,
+                Notification.is_read == False
+            )
+        )
+        unread_notifications = result.scalars().all()
+        unread_count = len(unread_notifications)
+
         response.append(GroupResponse(
             id=group.id,
             name=group.name,
@@ -169,7 +183,8 @@ async def list_groups(
             is_public_join=group.is_public_join,
             status=group.status,
             member_count=len(members),
-            space_id=space.id if space else None
+            space_id=space.id if space else None,
+            unread_count=unread_count
         ))
 
     return response
@@ -373,9 +388,12 @@ async def get_group_members(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="您不是该群组成员")
 
-    # 获取所有成员
+    # 获取所有活跃成员
     result = await db.execute(
-        select(GroupMember).where(GroupMember.group_id == group_id)
+        select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.join_status == "active"
+        )
     )
     members = result.scalars().all()
 
@@ -541,6 +559,39 @@ async def kick_member(
 
     member.join_status = "left"
     await db.commit()
+
+    # 获取被踢用户信息用于通知
+    result = await db.execute(select(User).where(User.id == user_id))
+    kicked_user = result.scalar_one_or_none()
+
+    # 创建通知给被踢出的用户
+    if kicked_user:
+        notification = Notification(
+            user_id=user_id,
+            notification_type="group_removed",
+            title=f"您已被移出群组",
+            content=f"您已被移出群组「{group.name}」",
+            data={
+                "group_id": group_id,
+                "group_name": group.name,
+                "removed_by": current_user.id,
+                "removed_by_name": current_user.real_name or current_user.username
+            },
+            related_id=group_id,
+            related_type="group"
+        )
+        db.add(notification)
+        await db.commit()
+
+        # WebSocket推送通知
+        await manager.send_personal_message({
+            "type": "group_removed",
+            "data": {
+                "group_id": group_id,
+                "group_name": group.name,
+                "removed_by_name": current_user.real_name or current_user.username
+            }
+        }, user_id)
 
     await log_audit(db, current_user, "member_kick", "group", group_id, f"踢出成员", request)
 

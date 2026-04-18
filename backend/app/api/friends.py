@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.models.models import User, Friendship
+from app.models.models import User, Friendship, Notification
 from app.api.deps import get_current_user
 from app.api.files import log_audit
 from app.utils.timezone import get_beijing_time
@@ -175,6 +175,7 @@ async def send_friend_request(
         raise HTTPException(status_code=404, detail="用户不存在")
 
     # 检查是否已经是好友或有待处理的申请
+    # 获取两个用户之间的所有关系记录，按状态优先级处理
     result = await db.execute(
         select(Friendship).where(
             or_(
@@ -183,7 +184,29 @@ async def send_friend_request(
             )
         )
     )
-    existing = result.scalar_one_or_none()
+    all_relations = result.scalars().all()
+
+    # 按优先级处理：accepted > pending > blocked > rejected
+    existing = None
+    for rel in all_relations:
+        if rel.status == "accepted":
+            existing = rel
+            break
+        elif rel.status == "pending":
+            existing = rel
+            break
+        elif rel.status == "blocked":
+            existing = rel
+            # 不 break，继续检查是否有更高优先级的状态
+        elif rel.status == "rejected" and existing is None:
+            existing = rel
+
+    # 删除多余的 rejected 记录（如果有的话）
+    rejected_records = [r for r in all_relations if r.status == "rejected" and r != existing]
+    for r in rejected_records:
+        await db.delete(r)
+    if rejected_records:
+        await db.flush()
 
     if existing:
         if existing.status == "accepted":
@@ -193,16 +216,29 @@ async def send_friend_request(
                 raise HTTPException(status_code=400, detail="已经发送过好友申请")
             else:
                 raise HTTPException(status_code=400, detail="对方已向你发送好友申请，请查看")
+        elif existing.status == "rejected":
+            # 被拒绝后可以重新发送申请
+            # 删除所有相关的关系记录，重新创建
+            await db.delete(existing)
+            # 检查是否有反向的rejected记录
+            result = await db.execute(
+                select(Friendship).where(
+                    Friendship.requester_id == data.user_id,
+                    Friendship.addressee_id == current_user.id,
+                    Friendship.status == "rejected"
+                )
+            )
+            reverse_rejected = result.scalars().all()
+            for r in reverse_rejected:
+                await db.delete(r)
+            await db.flush()
         elif existing.status == "blocked":
             if existing.requester_id == data.user_id:
                 raise HTTPException(status_code=403, detail="无法向该用户发送申请")
             else:
                 # 我拉黑了对方，先解除拉黑
-                existing.status = "pending"
-                existing.message = data.message
-                existing.updated_at = get_beijing_time()
-                await db.commit()
-                return {"message": "好友申请已发送（已自动解除拉黑）"}
+                await db.delete(existing)
+                await db.flush()
 
     # 检查对方是否拉黑了我
     result = await db.execute(
@@ -212,7 +248,7 @@ async def send_friend_request(
             Friendship.status == "blocked"
         )
     )
-    if result.scalar_one_or_none():
+    if result.scalars().first():
         raise HTTPException(status_code=403, detail="无法向该用户发送申请")
 
     # 创建好友申请
@@ -223,6 +259,25 @@ async def send_friend_request(
         message=data.message
     )
     db.add(friendship)
+    await db.flush()  # 获取 friendship.id
+
+    # 创建通知记录（持久化到数据库）
+    notification = Notification(
+        user_id=data.user_id,
+        notification_type="friend_request",
+        title="好友申请",
+        content=f"{current_user.real_name or current_user.username} 向你发送了好友申请",
+        data={
+            "friendship_id": friendship.id,
+            "requester_id": current_user.id,
+            "username": current_user.username,
+            "real_name": current_user.real_name,
+            "message": data.message
+        },
+        related_id=friendship.id,
+        related_type="friendship"
+    )
+    db.add(notification)
     await db.commit()
 
     # 发送实时通知
@@ -261,9 +316,26 @@ async def accept_friend_request(
 
     friendship.status = "accepted"
     friendship.updated_at = get_beijing_time()
+
+    # 创建通知记录（通知申请人好友申请已通过）
+    notification = Notification(
+        user_id=friendship.requester_id,
+        notification_type="friend_accepted",
+        title="好友申请已通过",
+        content=f"{current_user.real_name or current_user.username} 已接受你的好友申请",
+        data={
+            "friendship_id": friendship.id,
+            "user_id": current_user.id,
+            "username": current_user.username,
+            "real_name": current_user.real_name
+        },
+        related_id=friendship.id,
+        related_type="friendship"
+    )
+    db.add(notification)
     await db.commit()
 
-    # 通知申请人
+    # 通知申请人（实时通知）
     await notify_friend_accepted(friendship.requester_id, {
         "friendship_id": friendship.id,
         "user_id": current_user.id,

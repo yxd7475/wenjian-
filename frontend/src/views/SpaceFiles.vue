@@ -288,16 +288,6 @@
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="服务器地址" v-if="isLocalhost">
-          <el-input v-model="serverIp" placeholder="输入局域网IP，如 10.18.53.55">
-            <template #append>
-              <el-button @click="saveServerIp">保存</el-button>
-            </template>
-          </el-input>
-          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
-            局域网分享时需配置此电脑的IP地址
-          </div>
-        </el-form-item>
         <el-form-item label="访问密码" v-if="shareResult?.password">
           <el-input :value="shareResult.password" readonly />
         </el-form-item>
@@ -403,13 +393,9 @@ const shareForm = ref({
 
 const shareLink = computed(() => {
   if (!shareResult.value) return ''
-  // 如果是localhost访问，尝试使用局域网IP
   let baseUrl = window.location.origin
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    const configIp = localStorage.getItem('server_ip')
-    if (configIp) {
-      baseUrl = `${window.location.protocol}//${configIp}:${window.location.port}`
-    }
+  if (serverIp.value) {
+    baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
   }
   return `${baseUrl}/share/${shareResult.value.share_code}`
 })
@@ -798,6 +784,7 @@ const createShare = async () => {
       file_id: shareTarget.value.id,
       ...shareForm.value
     })
+    await fetchServerIp()
     showShareDialog.value = false
     showShareResult.value = true
   } catch (error) {
@@ -812,15 +799,18 @@ const copyShareLink = () => {
   ElMessage.success('链接已复制到剪贴板')
 }
 
-// 局域网IP配置
-const isLocalhost = computed(() => {
-  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-})
-const serverIp = ref(localStorage.getItem('server_ip') || '')
-const saveServerIp = () => {
-  if (serverIp.value) {
-    localStorage.setItem('server_ip', serverIp.value)
-    ElMessage.success('服务器地址已保存')
+const serverIp = ref(null)
+
+const fetchServerIp = async () => {
+  if (serverIp.value) return
+  try {
+    const data = await api.get('/auth/server-info')
+    if (data.local_ips && data.local_ips.length > 0) {
+      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.'))
+      serverIp.value = preferredIp || data.local_ips[0]
+    }
+  } catch (error) {
+    console.error('获取服务器 IP 失败:', error)
   }
 }
 
@@ -880,6 +870,7 @@ onMounted(() => {
   loadSpaceInfo()
   loadFiles()
   loadFolders()
+  fetchServerIp()  // 获取服务器 IP
 
   // 监听WebSocket消息
   notificationService.on('group_chat_message', handleGroupWebSocketMessage)

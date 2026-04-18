@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 import random
 import string
+import socket
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -295,3 +296,38 @@ async def register(
         access_token=access_token,
         user=UserResponse.model_validate(user),
     )
+
+
+@router.get("/server-info")
+async def get_server_info():
+    """获取服务器信息（局域网 IP 等）- 无需认证"""
+    # 获取本机所有 IP 地址
+    hostname = socket.gethostname()
+    local_ips = []
+
+    try:
+        # 获取所有网络接口的 IP
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            # 过滤掉 IPv6 和回环地址
+            if ':' not in ip and ip != '127.0.0.1':
+                if ip not in local_ips:
+                    local_ips.append(ip)
+    except Exception:
+        pass
+
+    # 如果没有找到，尝试连接外部地址来获取本机 IP
+    if not local_ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ips.append(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+
+    return {
+        "hostname": hostname,
+        "local_ips": local_ips,
+        "port": 8088  # 后端端口
+    }

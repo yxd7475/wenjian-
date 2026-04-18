@@ -81,7 +81,15 @@ const unreadCount = computed(() => {
 const loadNotifications = async () => {
   try {
     const data = await api.get('/notifications?limit=50')
-    notifications.value = data
+    // 按时间倒序排列，新消息在前；未读消息优先
+    notifications.value = data.sort((a, b) => {
+      // 未读优先
+      if (a.is_read !== b.is_read) {
+        return a.is_read ? 1 : -1
+      }
+      // 同状态按时间倒序
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
   } catch (error) {
     console.error('加载通知失败:', error)
   }
@@ -104,6 +112,8 @@ const getIcon = (type) => {
     'group_invite_accepted': CircleCheck,
     'group_invite_rejected': User,
     'group_joined': User,
+    'group_removed': User,
+    'group_chat_message': ChatDotRound,
     'friend_request': User,
     'friend_accepted': User,
     'chat_message': ChatDotRound,
@@ -120,6 +130,8 @@ const getIconColor = (type) => {
     'group_invite_accepted': '#67C23A',
     'group_invite_rejected': '#F56C6C',
     'group_joined': '#67C23A',
+    'group_removed': '#F56C6C',
+    'group_chat_message': '#409EFF',
     'friend_request': '#E6A23C',
     'friend_accepted': '#67C23A',
     'chat_message': '#409EFF',
@@ -145,8 +157,8 @@ const formatTime = (time) => {
 // 判断通知是否可点击跳转
 const isClickable = (notification) => {
   const clickableTypes = [
-    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined',
-    'chat_message', 'friend_request', 'friend_accepted', 'file_share'
+    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined', 'group_removed',
+    'chat_message', 'group_chat_message', 'friend_request', 'friend_accepted', 'file_share'
   ]
   return clickableTypes.includes(notification.notification_type)
 }
@@ -189,12 +201,15 @@ const handleNotificationClick = async (notification) => {
         router.push('/groups')
       }
       break
+    case 'group_removed':
+      // 被移出群组，跳转到群组列表
+      router.push('/groups')
+      break
     case 'chat_message':
-      // 跳转到聊天页面
-      if (data.group_id) {
-        router.push({ path: '/chat', query: { groupId: data.group_id } })
-      } else if (data.sender_id || data.friend_id) {
-        router.push({ path: '/chat', query: { friendId: data.sender_id || data.friend_id } })
+    case 'group_chat_message':
+      // 跳转到群组详情页（聊天）
+      if (data.group_id || notification.related_id) {
+        router.push(`/groups/${data.group_id || notification.related_id}`)
       } else {
         router.push('/chat')
       }
@@ -266,8 +281,8 @@ const handleWebSocketMessage = async (message) => {
 
   // 忽略心跳响应和其他非通知消息
   const notificationTypes = [
-    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined',
-    'chat_message', 'friend_request', 'friend_accepted', 'notification', 'alert'
+    'group_invite', 'group_invite_accepted', 'group_invite_rejected', 'group_joined', 'group_removed',
+    'chat_message', 'group_chat_message', 'friend_request', 'friend_accepted', 'notification', 'alert'
   ]
   if (!notificationTypes.includes(type)) {
     return
@@ -291,8 +306,12 @@ const handleWebSocketMessage = async (message) => {
     case 'group_joined':
       title = `您已加入群组「${data.group_name}」`
       break
+    case 'group_removed':
+      title = `您已被移出群组「${data.group_name}」`
+      break
     case 'chat_message':
-      title = `新消息`
+    case 'group_chat_message':
+      title = `群组「${data.group_name}」有新消息`
       break
     case 'friend_request':
       title = '新的好友申请'
@@ -306,7 +325,7 @@ const handleWebSocketMessage = async (message) => {
 
   if (title) {
     ElMessage({
-      type: 'info',
+      type: type === 'group_removed' ? 'warning' : 'info',
       message: title,
       duration: 3000
     })

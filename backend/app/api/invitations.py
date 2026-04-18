@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.models.models import User, Group, GroupMember, Invitation
+from app.models.models import User, Group, GroupMember, Invitation, Notification
 from app.api.deps import get_current_user
 from app.api.files import log_audit
 from app.utils.timezone import get_beijing_time
@@ -128,6 +128,29 @@ async def create_invitation(
         )
 
     db.add(invitation)
+    await db.flush()  # 获取 invitation.id
+
+    # 创建通知记录（持久化到数据库）
+    if data.invitee_id:
+        notification = Notification(
+            user_id=data.invitee_id,
+            notification_type="group_invite",
+            title="群组邀请",
+            content=f"{current_user.real_name or current_user.username} 邀请您加入群组「{group.name}」",
+            data={
+                "invitation_id": invitation.id,
+                "group_id": group.id,
+                "group_name": group.name,
+                "inviter_id": current_user.id,
+                "inviter_name": current_user.real_name or current_user.username,
+                "invite_code": invite_code,
+                "expire_at": expire_at.isoformat()
+            },
+            related_id=invitation.id,
+            related_type="invitation"
+        )
+        db.add(notification)
+
     await db.commit()
     await db.refresh(invitation)
 
@@ -137,7 +160,7 @@ async def create_invitation(
             "id": invitation.id,
             "group_id": group.id,
             "group_name": group.name,
-            "inviter_name": current_user.username,
+            "inviter_name": current_user.real_name or current_user.username,
             "invite_code": invite_code,
             "expire_at": expire_at.isoformat()
         })
@@ -257,13 +280,34 @@ async def batch_invite_users(
                 expire_at=expire_at
             )
             db.add(invitation)
+            await db.flush()  # 获取 invitation.id
 
-            # 发送通知
+            # 创建通知记录（持久化到数据库）
+            notification = Notification(
+                user_id=user_id,
+                notification_type="group_invite",
+                title="群组邀请",
+                content=f"{current_user.real_name or current_user.username} 邀请您加入群组「{group.name}」",
+                data={
+                    "invitation_id": invitation.id,
+                    "group_id": group.id,
+                    "group_name": group.name,
+                    "inviter_id": current_user.id,
+                    "inviter_name": current_user.real_name or current_user.username,
+                    "invite_code": invite_code,
+                    "expire_at": expire_at.isoformat()
+                },
+                related_id=invitation.id,
+                related_type="invitation"
+            )
+            db.add(notification)
+
+            # 发送实时通知
             await notify_invitation(user_id, {
-                "id": 0,  # 临时ID，commit后会有真实ID
+                "id": invitation.id,
                 "group_id": group.id,
                 "group_name": group.name,
-                "inviter_name": current_user.username,
+                "inviter_name": current_user.real_name or current_user.username,
                 "invite_code": invite_code,
                 "expire_at": expire_at.isoformat()
             })
@@ -460,6 +504,25 @@ async def accept_invitation(
         db.add(member)
 
     invitation.status = "accepted"
+
+    # 创建通知记录
+    # 1. 通知邀请人：邀请已被接受
+    notification = Notification(
+        user_id=invitation.inviter_id,
+        notification_type="group_invite_accepted",
+        title="邀请已接受",
+        content=f"{current_user.real_name or current_user.username} 已接受您的群组邀请，加入「{group.name}」",
+        data={
+            "group_id": group.id,
+            "group_name": group.name,
+            "new_member_id": current_user.id,
+            "new_member_name": current_user.real_name or current_user.username
+        },
+        related_id=group.id,
+        related_type="group"
+    )
+    db.add(notification)
+
     await db.commit()
 
     # 发送实时通知

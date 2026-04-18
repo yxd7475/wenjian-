@@ -232,7 +232,7 @@ class FileShare(Base):
     max_downloads = Column(Integer, default=0, comment="最大下载次数，0表示不限")
     download_count = Column(Integer, default=0, comment="已下载次数")
     is_active = Column(Boolean, default=True, comment="是否有效")
-    created_at = Column(DateTime, default=datetime.utcnow)  # 使用UTC保持兼容
+    created_at = Column(DateTime, default=get_beijing_time)
 
     # 关联
     file = relationship("File")

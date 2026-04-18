@@ -84,6 +84,36 @@ async def list_spaces(
     return spaces
 
 
+@router.get("/group/{group_id}", response_model=List[SpaceResponse])
+async def get_group_spaces(
+    group_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取群组空间"""
+    # 检查用户是否是群组成员
+    result = await db.execute(
+        select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == current_user.id,
+            GroupMember.join_status == "active"
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="您不是该群组成员")
+
+    # 获取群组空间
+    result = await db.execute(
+        select(Space).where(
+            Space.group_id == group_id,
+            Space.space_type == "group",
+            Space.status == True
+        )
+    )
+    spaces = result.scalars().all()
+    return spaces
+
+
 @router.get("/{space_id}", response_model=SpaceDetailResponse)
 async def get_space(
     space_id: int,

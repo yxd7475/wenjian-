@@ -283,6 +283,11 @@ class NotificationService {
         title: '已加入群组',
         body: `您已加入群组「${data?.group_name || ''}」`
       },
+      'group_removed': {
+        sound: 'warning',
+        title: '被移出群组',
+        body: `您已被移出群组「${data?.group_name || ''}」`
+      },
       'invitation': {
         sound: 'default',
         title: '群组邀请',

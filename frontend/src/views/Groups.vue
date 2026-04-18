@@ -11,7 +11,12 @@
       </template>
 
       <el-table :data="groups" v-loading="loading">
-        <el-table-column label="群组名称" prop="name" />
+        <el-table-column label="群组名称" prop="name">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <el-badge :value="row.unread_count" :hidden="!row.unread_count" :max="99" style="margin-left: 8px" />
+          </template>
+        </el-table-column>
         <el-table-column label="描述" prop="description" show-overflow-tooltip />
         <el-table-column label="成员数" width="100">
           <template #default="{ row }">{{ row.member_count || 0 }}</template>
@@ -71,10 +76,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/utils/api'
+import { notificationService } from '@/utils/notifications'
 
 const router = useRouter()
 
@@ -191,7 +197,33 @@ const leaveGroup = async (group) => {
 
 onMounted(() => {
   loadGroups()
+  // 监听群组消息，实时更新未读数
+  notificationService.on('group_chat_message', handleGroupMessage)
+  // 监听群组消息已读事件
+  window.addEventListener('group-notifications-read', handleNotificationsRead)
 })
+
+onUnmounted(() => {
+  notificationService.off('group_chat_message', handleGroupMessage)
+  window.removeEventListener('group-notifications-read', handleNotificationsRead)
+})
+
+// 处理群组消息，实时更新红点
+const handleGroupMessage = (data) => {
+  const group = groups.value.find(g => g.id === data.group_id)
+  if (group) {
+    group.unread_count = (group.unread_count || 0) + 1
+  }
+}
+
+// 处理群组消息已读，清除红点
+const handleNotificationsRead = (event) => {
+  const { groupId } = event.detail
+  const group = groups.value.find(g => g.id === groupId)
+  if (group) {
+    group.unread_count = 0
+  }
+}
 </script>
 
 <style scoped>

@@ -11,7 +11,7 @@ import os
 import uuid
 
 from app.db.session import get_db
-from app.models.models import User, Group, GroupMember, GroupChatMessage, File as FileModel, Space
+from app.models.models import User, Group, GroupMember, GroupChatMessage, File as FileModel, Space, Notification
 from app.api.deps import get_current_user
 from app.core.notifications import manager
 from app.core.config import settings
@@ -87,11 +87,32 @@ async def send_group_message(
 
     for member in members:
         if member.user_id != current_user.id:
+            # 创建通知记录
+            notification = Notification(
+                user_id=member.user_id,
+                notification_type="group_chat_message",
+                title=f"群组消息 - {group.name}",
+                content=f"{current_user.real_name or current_user.username}: {data.content[:50]}{'...' if len(data.content) > 50 else ''}",
+                data={
+                    "group_id": data.group_id,
+                    "group_name": group.name,
+                    "sender_id": current_user.id,
+                    "sender_name": current_user.username,
+                    "sender_real_name": current_user.real_name,
+                    "message_id": message.id
+                },
+                related_id=data.group_id,
+                related_type="group"
+            )
+            db.add(notification)
+
+            # WebSocket推送
             await manager.send_personal_message({
                 "type": "group_chat_message",
                 "data": msg_data
             }, member.user_id)
 
+    await db.commit()
     return msg_data
 
 
@@ -203,11 +224,32 @@ async def send_group_file_message(
 
     for member in members:
         if member.user_id != current_user.id:
+            # 创建通知记录
+            notification = Notification(
+                user_id=member.user_id,
+                notification_type="group_chat_message",
+                title=f"群组消息 - {group.name}",
+                content=f"{current_user.real_name or current_user.username}: [文件] {file.filename}",
+                data={
+                    "group_id": group_id,
+                    "group_name": group.name,
+                    "sender_id": current_user.id,
+                    "sender_name": current_user.username,
+                    "sender_real_name": current_user.real_name,
+                    "message_id": message.id
+                },
+                related_id=group_id,
+                related_type="group"
+            )
+            db.add(notification)
+
+            # WebSocket推送
             await manager.send_personal_message({
                 "type": "group_chat_message",
                 "data": msg_data
             }, member.user_id)
 
+    await db.commit()
     return msg_data
 
 

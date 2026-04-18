@@ -92,78 +92,6 @@ async def get_unread_count(
     }
 
 
-@router.put("/{notification_id}/read")
-async def mark_notification_read(
-    notification_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """标记通知为已读"""
-    result = await db.execute(
-        select(Notification).where(
-            Notification.id == notification_id,
-            Notification.user_id == current_user.id
-        )
-    )
-    notification = result.scalar_one_or_none()
-    if not notification:
-        raise HTTPException(status_code=404, detail="通知不存在")
-
-    notification.is_read = True
-    await db.commit()
-
-    return {"message": "已标记为已读"}
-
-
-@router.put("/read-all")
-async def mark_all_read(
-    notification_type: Optional[str] = Query(None, description="指定通知类型"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """标记所有通知为已读"""
-    query = select(Notification).where(
-        Notification.user_id == current_user.id,
-        Notification.is_read == False
-    )
-
-    if notification_type:
-        query = query.where(Notification.notification_type == notification_type)
-
-    result = await db.execute(query)
-    notifications = result.scalars().all()
-
-    for n in notifications:
-        n.is_read = True
-
-    await db.commit()
-
-    return {"message": f"已标记 {len(notifications)} 条通知为已读"}
-
-
-@router.delete("/{notification_id}")
-async def delete_notification(
-    notification_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """删除通知"""
-    result = await db.execute(
-        select(Notification).where(
-            Notification.id == notification_id,
-            Notification.user_id == current_user.id
-        )
-    )
-    notification = result.scalar_one_or_none()
-    if not notification:
-        raise HTTPException(status_code=404, detail="通知不存在")
-
-    await db.delete(notification)
-    await db.commit()
-
-    return {"message": "通知已删除"}
-
-
 @router.get("/pending-invitations")
 async def get_pending_invitations(
     current_user: User = Depends(get_current_user),
@@ -198,3 +126,100 @@ async def get_pending_invitations(
         })
 
     return response
+
+
+@router.put("/read-all")
+async def mark_all_read(
+    notification_type: Optional[str] = Query(None, description="指定通知类型"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """标记所有通知为已读"""
+    query = select(Notification).where(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False
+    )
+
+    if notification_type:
+        query = query.where(Notification.notification_type == notification_type)
+
+    result = await db.execute(query)
+    notifications = result.scalars().all()
+
+    for n in notifications:
+        n.is_read = True
+
+    await db.commit()
+
+    return {"message": f"已标记 {len(notifications)} 条通知为已读"}
+
+
+@router.put("/read-group/{group_id}")
+async def mark_group_notifications_read(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """标记指定群组的消息通知为已读"""
+    result = await db.execute(
+        select(Notification).where(
+            Notification.user_id == current_user.id,
+            Notification.notification_type == "group_chat_message",
+            Notification.related_id == group_id,
+            Notification.is_read == False
+        )
+    )
+    notifications = result.scalars().all()
+
+    for n in notifications:
+        n.is_read = True
+
+    await db.commit()
+
+    return {"message": f"已标记 {len(notifications)} 条通知为已读"}
+
+
+@router.put("/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """标记通知为已读"""
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id
+        )
+    )
+    notification = result.scalar_one_or_none()
+    if not notification:
+        raise HTTPException(status_code=404, detail="通知不存在")
+
+    notification.is_read = True
+    await db.commit()
+
+    return {"message": "已标记为已读"}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除通知"""
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == current_user.id
+        )
+    )
+    notification = result.scalar_one_or_none()
+    if not notification:
+        raise HTTPException(status_code=404, detail="通知不存在")
+
+    await db.delete(notification)
+    await db.commit()
+
+    return {"message": "通知已删除"}
