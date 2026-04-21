@@ -901,7 +901,7 @@ async def preview_file(
     if not os.path.exists(storage_path):
         raise HTTPException(status_code=404, detail="文件已被删除")
 
-    return FileResponse(
+    return FastAPIFileResponse(
         path=storage_path,
         media_type=file_record.mime_type,
     )
