@@ -72,6 +72,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, DocumentCopy } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 
 const shares = ref([])
@@ -105,7 +106,7 @@ const getShareLink = (share) => {
   if (serverIp.value) {
     baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
   }
-  return `${baseUrl}/share/${share.share_code}`
+  return `${baseUrl}/s/${share.share_code}`
 }
 
 const getShareStatus = (share) => {
@@ -135,8 +136,39 @@ const loadShares = async () => {
 
 const copyShareLink = (share) => {
   const link = getShareLink(share)
-  navigator.clipboard.writeText(link)
-  ElMessage.success('分享链接已复制: ' + link)
+  console.log('复制链接:', link)
+
+  if (!link) {
+    ElMessage.error('分享链接为空')
+    return
+  }
+
+  // 创建 textarea 元素
+  const textarea = document.createElement('textarea')
+  textarea.value = link
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  let success = false
+  try {
+    success = document.execCommand('copy')
+    console.log('复制结果:', success)
+  } catch (e) {
+    console.error('复制异常:', e)
+  }
+
+  document.body.removeChild(textarea)
+
+  if (success) {
+    ElMessage.success('复制成功：' + link)
+  } else {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 const toggleShare = async (share) => {

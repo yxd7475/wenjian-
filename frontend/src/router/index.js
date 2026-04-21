@@ -15,10 +15,15 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
-    path: '/share/:code',
+    path: '/s/:code',
     name: 'ShareAccess',
     component: () => import('@/views/ShareAccess.vue'),
     meta: { requiresAuth: false }
+  },
+  // 兼容旧链接
+  {
+    path: '/share/:code',
+    redirect: to => ({ path: `/s/${to.params.code}` })
   },
   {
     path: '/join/:code',

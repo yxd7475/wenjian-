@@ -439,11 +439,10 @@
     <el-dialog v-model="showShareResult" title="分享成功" width="500px">
       <el-form label-width="100px">
         <el-form-item label="分享链接">
-          <el-input :value="shareLink" readonly>
-            <template #append>
-              <el-button @click="copyShareLink">复制</el-button>
-            </template>
-          </el-input>
+          <div style="display: flex; gap: 8px;">
+            <el-input :value="shareLink" readonly style="flex: 1" />
+            <el-button type="primary" @click="copyShareLink">复制</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="访问密码" v-if="shareResult?.password">
           <el-input :value="shareResult.password" readonly />
@@ -572,7 +571,7 @@ const shareLink = computed(() => {
   if (serverIp.value) {
     baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
   }
-  return `${baseUrl}/share/${shareResult.value.share_code}`
+  return `${baseUrl}/s/${shareResult.value.share_code}`
 })
 
 // 上传配置
@@ -819,8 +818,40 @@ const createShare = async () => {
 }
 
 const copyShareLink = () => {
-  navigator.clipboard.writeText(shareLink.value)
-  ElMessage.success('链接已复制到剪贴板')
+  const link = shareLink.value
+  console.log('复制链接:', link)
+
+  if (!link) {
+    ElMessage.error('分享链接为空')
+    return
+  }
+
+  // 创建 textarea 元素
+  const textarea = document.createElement('textarea')
+  textarea.value = link
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  let success = false
+  try {
+    success = document.execCommand('copy')
+    console.log('复制结果:', success)
+  } catch (e) {
+    console.error('复制异常:', e)
+  }
+
+  document.body.removeChild(textarea)
+
+  if (success) {
+    ElMessage.success('复制成功：' + link)
+  } else {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 const createFolder = async () => {

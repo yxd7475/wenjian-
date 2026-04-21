@@ -5,6 +5,7 @@ import os
 import secrets
 import hashlib
 from datetime import datetime, timedelta
+from app.utils.share_code import generate_share_code
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
 from fastapi.responses import FileResponse
@@ -75,8 +76,16 @@ async def create_share(
     if file.owner_id != current_user.id and not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="无权限分享此文件")
 
-    # 生成分享码
-    share_code = secrets.token_urlsafe(8)
+    # 生成分享码（确保唯一）
+    share_code = generate_share_code()
+    # 如果冲突，重新生成
+    for _ in range(10):
+        existing = await db.execute(
+            select(FileShare).where(FileShare.share_code == share_code)
+        )
+        if not existing.scalar_one_or_none():
+            break
+        share_code = generate_share_code()
 
     # 计算过期时间（使用 UTC 存储，兼容已有数据）
     expire_at = None
