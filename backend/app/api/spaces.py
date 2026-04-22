@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.models.models import User, Space, Group, GroupMember, Folder
+from app.models.models import User, Space, Group, GroupMember, Folder, File
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/spaces", tags=["空间管理"])
@@ -81,6 +81,16 @@ async def list_spaces(
         group_spaces = result.scalars().all()
         spaces.extend(group_spaces)
 
+    # 4. 公共空间 - 所有用户可见
+    result = await db.execute(
+        select(Space).where(
+            Space.space_type == "public",
+            Space.status == True
+        )
+    )
+    public_spaces = result.scalars().all()
+    spaces.extend(public_spaces)
+
     return spaces
 
 
@@ -112,6 +122,56 @@ async def get_group_spaces(
     )
     spaces = result.scalars().all()
     return spaces
+
+
+@router.get("/public/info", response_model=SpaceDetailResponse)
+async def get_public_space(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取公共空间信息"""
+    result = await db.execute(
+        select(Space).where(Space.space_type == "public", Space.status == True)
+    )
+    space = result.scalar_one_or_none()
+
+    if not space:
+        raise HTTPException(status_code=404, detail="公共空间不存在")
+
+    # 获取根文件夹
+    result = await db.execute(
+        select(Folder).where(
+            Folder.space_id == space.id,
+            Folder.parent_id == None,
+            Folder.is_deleted == False
+        )
+    )
+    root_folder = result.scalar_one_or_none()
+
+    # 统计文件数量和大小
+    result = await db.execute(
+        select(File).where(
+            File.space_id == space.id,
+            File.is_deleted == False,
+            File.status == 1
+        )
+    )
+    files = result.scalars().all()
+    file_count = len(files)
+    total_size = sum(f.size for f in files)
+
+    return SpaceDetailResponse(
+        id=space.id,
+        name=space.name,
+        space_type=space.space_type,
+        owner_id=space.owner_id,
+        group_id=space.group_id,
+        description=space.description,
+        status=space.status,
+        root_folder_id=root_folder.id if root_folder else None,
+        file_count=file_count,
+        total_size=total_size
+    )
 
 
 @router.get("/{space_id}", response_model=SpaceDetailResponse)
@@ -292,6 +352,10 @@ async def check_space_access(space: Space, user: User, db: AsyncSession) -> bool
         if not result.scalar_one_or_none():
             raise HTTPException(status_code=403, detail="无权访问此空间")
 
+    elif space.space_type == "public":
+        # 公共空间：所有登录用户可访问
+        pass  # 不需要额外检查
+
     return True
 
 
@@ -321,5 +385,9 @@ async def get_user_space_role(space: Space, user: User, db: AsyncSession) -> str
         if member:
             return member.role
         return "none"
+
+    elif space.space_type == "public":
+        # 公共空间：所有用户都是成员角色，可以上传和下载
+        return "member"
 
     return "none"

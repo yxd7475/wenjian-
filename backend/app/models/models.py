@@ -133,6 +133,7 @@ class File(Base):
     remark = Column(Text, nullable=True, comment="备注")
     extra_json = Column(JSON, nullable=True, comment="扩展信息")
     is_deleted = Column(Boolean, default=False, comment="是否删除")
+    category_id = Column(Integer, ForeignKey("file_categories.id"), nullable=True, comment="分类ID")
     created_at = Column(DateTime, default=get_beijing_time)
     updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time)
 
@@ -141,6 +142,7 @@ class File(Base):
     folder = relationship("Folder", back_populates="files")
     owner = relationship("User")
     versions = relationship("FileVersion", back_populates="file")
+    category = relationship("FileCategory")
 
 
 class FileVersion(Base):
@@ -441,3 +443,15 @@ class Notification(Base):
 
     # 关联
     user = relationship("User")
+
+
+class FileCategory(Base):
+    """文件分类表"""
+    __tablename__ = "file_categories"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(50), nullable=False, comment="分类名称")
+    icon = Column(String(50), nullable=True, comment="图标名称")
+    color = Column(String(20), nullable=True, comment="颜色")
+    sort_order = Column(Integer, default=0, comment="排序")
+    created_at = Column(DateTime, default=get_beijing_time)

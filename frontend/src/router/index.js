@@ -46,6 +46,13 @@ const routes = [
         component: () => import('@/views/Files.vue'),
         meta: { title: '文件管理' }
       },
+      // 公共空间路由
+      {
+        path: 'public',
+        name: 'PublicSpace',
+        component: () => import('@/views/PublicSpace.vue'),
+        meta: { title: '公共空间' }
+      },
       // 空间路由
       {
         path: 'space/:id',

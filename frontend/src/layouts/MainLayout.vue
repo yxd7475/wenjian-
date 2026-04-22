@@ -80,6 +80,12 @@
           </el-menu-item>
         </el-sub-menu>
 
+        <!-- 公共空间 -->
+        <el-menu-item index="/public">
+          <el-icon><Grid /></el-icon>
+          <span>公共空间</span>
+        </el-menu-item>
+
         <!-- 群组空间 -->
         <el-sub-menu index="groups">
           <template #title>
@@ -151,7 +157,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { ElMessage } from 'element-plus'
-import { Close, Menu } from '@element-plus/icons-vue'
+import { Close, Menu, Grid } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
 import NotificationCenter from '@/components/NotificationCenter.vue'

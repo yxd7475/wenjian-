@@ -13,7 +13,7 @@ from app.models.models import (
     User, Role, Permission, Department, RolePermission,
     Folder, File, FileVersion, FilePermission, AuditLog, UploadTask,
     FileShare, BackupRecord, AuditAlert, SystemConfig,
-    Space, Group, GroupMember, Invitation, Notification
+    Space, Group, GroupMember, Invitation, Notification, FileCategory
 )
 from app.core.security import get_password_hash
 
@@ -245,6 +245,49 @@ async def init_admin_space(session: AsyncSession, admin_id: int):
         print("[OK] 管理员空间已存在")
 
 
+async def init_public_space(session: AsyncSession):
+    """初始化公共空间"""
+    result = await session.execute(
+        select(Space).where(Space.space_type == "public")
+    )
+    if not result.scalar_one_or_none():
+        public_space = Space(
+            name="公共空间",
+            space_type="public",
+            owner_id=None,
+            description="公共文件共享空间，所有用户可访问",
+            status=True,
+        )
+        session.add(public_space)
+        await session.commit()
+        print("[OK] 公共空间创建完成")
+    else:
+        print("[OK] 公共空间已存在")
+
+
+async def init_file_categories(session: AsyncSession):
+    """初始化文件分类"""
+    categories_data = [
+        {"name": "文档", "icon": "Document", "color": "#409EFF", "sort_order": 1},
+        {"name": "图片", "icon": "Picture", "color": "#67C23A", "sort_order": 2},
+        {"name": "视频", "icon": "VideoPlay", "color": "#E6A23C", "sort_order": 3},
+        {"name": "音乐", "icon": "Headset", "color": "#F56C6C", "sort_order": 4},
+        {"name": "软件", "icon": "Monitor", "color": "#909399", "sort_order": 5},
+        {"name": "其他", "icon": "More", "color": "#C0C4CC", "sort_order": 6},
+    ]
+
+    for cat_data in categories_data:
+        result = await session.execute(
+            select(FileCategory).where(FileCategory.name == cat_data["name"])
+        )
+        if not result.scalar_one_or_none():
+            cat = FileCategory(**cat_data)
+            session.add(cat)
+
+    await session.commit()
+    print("[OK] 文件分类初始化完成")
+
+
 async def init_db():
     """数据库初始化主函数"""
     print("开始初始化数据库...")
@@ -259,6 +302,8 @@ async def init_db():
         await init_role_permissions(session)
         await init_departments(session)
         await init_superuser(session)
+        await init_public_space(session)
+        await init_file_categories(session)
 
     print("\n数据库初始化完成！")
 

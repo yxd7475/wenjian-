@@ -24,6 +24,7 @@ from app.api.friends import router as friends_router
 from app.api.chat import router as chat_router
 from app.api.group_chat import router as group_chat_router
 from app.api.notifications import router as notifications_router
+from app.api.categories import router as categories_router
 from app.utils.scheduler import setup_scheduler
 from app.core.notifications import manager
 from app.core.security import decode_access_token
@@ -114,6 +115,7 @@ app.include_router(friends_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(group_chat_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
+app.include_router(categories_router, prefix="/api")
 
 
 # 健康检查

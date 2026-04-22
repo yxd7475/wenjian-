@@ -401,6 +401,7 @@ async def upload_file(
     file: UploadFile = File(...),
     folder_id: Optional[int] = Query(None),
     space_id: Optional[int] = Query(None),
+    category_id: Optional[int] = Query(None),
     remark: Optional[str] = Form(None),
     overwrite: bool = Form(False),
     current_user: User = Depends(require_permission("file:upload")),
@@ -470,6 +471,9 @@ async def upload_file(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="无权访问管理员空间"
                 )
+        # 公共空间所有用户都可以上传
+        elif space.space_type == "public":
+            pass  # 所有登录用户都可以上传
 
     if folder_id:
         result = await db.execute(
@@ -605,6 +609,7 @@ async def upload_file(
         owner_id=current_user.id,
         remark=remark,
         version_no=1,
+        category_id=category_id,
     )
     db.add(file_record)
     await db.commit()
@@ -653,6 +658,15 @@ async def upload_file(
                     },
                     member_ids
                 )
+
+    # 重新加载file_record以包含category关系
+    result = await db.execute(
+        select(FileModel).options(
+            selectinload(FileModel.owner),
+            selectinload(FileModel.category)
+        ).where(FileModel.id == file_record.id)
+    )
+    file_record = result.scalar_one()
 
     return FileResponse.model_validate(file_record)
 
@@ -1221,6 +1235,120 @@ async def search_files(
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar()
 
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.order_by(FileModel.created_at.desc())
+
+    result = await db.execute(query)
+    files = result.scalars().all()
+
+    return FileListResponse(
+        items=[FileResponse.model_validate(f) for f in files],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/public/search", response_model=FileListResponse)
+async def search_public_files(
+    keyword: str = Query(..., min_length=1),
+    category_id: Optional[int] = None,
+    ext: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """搜索公共空间文件"""
+    # 获取公共空间
+    result = await db.execute(
+        select(Space).where(Space.space_type == "public", Space.status == True)
+    )
+    public_space = result.scalar_one_or_none()
+
+    if not public_space:
+        return FileListResponse(items=[], total=0, page=page, page_size=page_size)
+
+    # 构建查询
+    query = select(FileModel).options(
+        selectinload(FileModel.owner),
+        selectinload(FileModel.category)
+    ).where(
+        FileModel.is_deleted == False,
+        FileModel.space_id == public_space.id
+    )
+
+    # 关键词搜索
+    query = query.where(FileModel.origin_name.ilike(f"%{keyword}%"))
+
+    # 分类筛选
+    if category_id:
+        query = query.where(FileModel.category_id == category_id)
+
+    # 扩展名筛选
+    if ext:
+        query = query.where(FileModel.ext == ext.lower())
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar()
+
+    # 分页和排序
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    query = query.order_by(FileModel.created_at.desc())
+
+    result = await db.execute(query)
+    files = result.scalars().all()
+
+    return FileListResponse(
+        items=[FileResponse.model_validate(f) for f in files],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/public", response_model=FileListResponse)
+async def list_public_files(
+    category_id: Optional[int] = None,
+    ext: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取公共空间文件列表"""
+    # 获取公共空间
+    result = await db.execute(
+        select(Space).where(Space.space_type == "public", Space.status == True)
+    )
+    public_space = result.scalar_one_or_none()
+
+    if not public_space:
+        return FileListResponse(items=[], total=0, page=page, page_size=page_size)
+
+    # 构建查询
+    query = select(FileModel).options(
+        selectinload(FileModel.owner),
+        selectinload(FileModel.category)
+    ).where(
+        FileModel.is_deleted == False,
+        FileModel.space_id == public_space.id
+    )
+
+    # 分类筛选
+    if category_id:
+        query = query.where(FileModel.category_id == category_id)
+
+    # 扩展名筛选
+    if ext:
+        query = query.where(FileModel.ext == ext.lower())
+
+    # 统计总数
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar()
+
+    # 分页和排序
     query = query.offset((page - 1) * page_size).limit(page_size)
     query = query.order_by(FileModel.created_at.desc())
 

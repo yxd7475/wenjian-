@@ -179,6 +179,16 @@ class FileOwnerInfo(BaseModel):
         from_attributes = True
 
 
+class FileCategoryInfo(BaseModel):
+    id: int
+    name: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class FileResponse(BaseModel):
     id: int
     space_id: Optional[int]
@@ -189,6 +199,8 @@ class FileResponse(BaseModel):
     size: int
     owner_id: int
     owner: Optional[FileOwnerInfo] = None
+    category_id: Optional[int] = None
+    category: Optional[FileCategoryInfo] = None
     version_no: int
     status: int
     remark: Optional[str]
