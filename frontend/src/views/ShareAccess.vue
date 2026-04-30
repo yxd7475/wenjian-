@@ -41,6 +41,17 @@
 
       <!-- 下载区域 -->
       <div v-else style="text-align: center">
+        <div style="margin-bottom: 16px">
+          <el-button
+            v-if="canPreview"
+            size="large"
+            plain
+            @click="showPreviewDialog = true"
+          >
+            预览文件
+          </el-button>
+        </div>
+
         <!-- 下载进度 -->
         <div v-if="downloading" style="margin-bottom: 20px">
           <el-progress
@@ -78,14 +89,24 @@
         </el-alert>
       </div>
     </el-card>
+
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      :text-request="fetchPreviewText"
+      @download="downloadFile"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/utils/api'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { getFileExtension, isPreviewable } from '@/utils/file'
 
 const route = useRoute()
 const loading = ref(true)
@@ -97,6 +118,7 @@ const downloading = ref(false)
 const downloadProgress = ref(0)
 const downloadedSize = ref(0)
 const downloadSpeed = ref('')
+const showPreviewDialog = ref(false)
 
 const formatSize = (bytes) => {
   if (!bytes) return '0 B'
@@ -114,6 +136,30 @@ const formatDate = (dateStr) => {
 const progressFormat = (percentage) => {
   return percentage === 100 ? '完成' : `${percentage}%`
 }
+
+const previewFile = computed(() => {
+  if (!shareInfo.value) return null
+  return {
+    origin_name: shareInfo.value.file_name,
+    size: shareInfo.value.file_size,
+    ext: shareInfo.value.file_ext || getFileExtension(shareInfo.value.file_name)
+  }
+})
+
+const canPreview = computed(() => {
+  return previewFile.value ? isPreviewable(previewFile.value) : false
+})
+
+const previewUrl = computed(() => {
+  const shareCode = route.params.code
+  if (!shareCode || !previewFile.value) return ''
+  const params = new URLSearchParams()
+  if (password.value) {
+    params.set('password', password.value)
+  }
+  const query = params.toString()
+  return `/api/shares/${shareCode}/preview${query ? `?${query}` : ''}`
+})
 
 const loadShareInfo = async () => {
   const shareCode = route.params.code
@@ -154,6 +200,22 @@ const verifyPassword = async () => {
     ElMessage.error(err.response?.data?.detail || '密码错误')
     passwordVerified.value = false
   }
+}
+
+const fetchPreviewText = async () => {
+  if (!previewUrl.value) return ''
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    let message = '读取文件内容失败'
+    try {
+      const data = await response.json()
+      message = data.detail || message
+    } catch {
+      // ignore json parsing errors
+    }
+    throw new Error(message)
+  }
+  return response.text()
 }
 
 const downloadFile = async () => {

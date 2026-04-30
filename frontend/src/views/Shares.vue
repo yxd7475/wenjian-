@@ -56,28 +56,43 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="toggleShare(row)">
-              {{ row.is_active ? '关闭' : '开启' }}
-            </el-button>
-            <el-button size="small" type="danger" @click="deleteShare(row)">删除</el-button>
+            <el-button-group>
+              <el-button size="small" type="primary" plain @click="previewShare(row)" v-if="canPreviewShare(row)">预览</el-button>
+              <el-button size="small" @click="toggleShare(row)">
+                {{ row.is_active ? '关闭' : '开启' }}
+              </el-button>
+              <el-button size="small" type="danger" @click="deleteShare(row)">删除</el-button>
+            </el-button-group>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      :text-request="fetchPreviewText"
+      @download="downloadPreviewFile"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, DocumentCopy } from '@element-plus/icons-vue'
 import api from '@/utils/api'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { getFileExtension, isPreviewable } from '@/utils/file'
 
 const shares = ref([])
 const loading = ref(false)
 const serverIp = ref(null)
+const showPreviewDialog = ref(false)
+const currentPreviewShare = ref(null)
 
 // 获取服务器 IP
 const fetchServerIp = async () => {
@@ -85,8 +100,7 @@ const fetchServerIp = async () => {
   try {
     const data = await api.get('/auth/server-info')
     if (data.local_ips && data.local_ips.length > 0) {
-      // 优先选择非 172.x（WSL）的 IP
-      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.'))
+      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.') && !ip.startsWith('169.254.'))
       serverIp.value = preferredIp || data.local_ips[0]
     }
     return serverIp.value
@@ -100,6 +114,25 @@ const formatDate = (dateStr) => {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('zh-CN')
 }
+
+const previewFile = computed(() => {
+  if (!currentPreviewShare.value) return null
+  return {
+    origin_name: currentPreviewShare.value.file_name,
+    size: currentPreviewShare.value.file_size,
+    ext: currentPreviewShare.value.file_ext || getFileExtension(currentPreviewShare.value.file_name)
+  }
+})
+
+const previewUrl = computed(() => {
+  if (!currentPreviewShare.value) return ''
+  const params = new URLSearchParams()
+  if (currentPreviewShare.value.password) {
+    params.set('password', currentPreviewShare.value.password)
+  }
+  const query = params.toString()
+  return `/api/shares/${currentPreviewShare.value.share_code}/preview${query ? `?${query}` : ''}`
+})
 
 const getShareLink = (share) => {
   let baseUrl = window.location.origin
@@ -121,6 +154,12 @@ const getShareStatusType = (share) => {
   if (share.expire_at && new Date(share.expire_at) < new Date()) return 'danger'
   if (share.max_downloads > 0 && share.download_count >= share.max_downloads) return 'warning'
   return 'success'
+}
+
+const canPreviewShare = (share) => {
+  return isPreviewable({
+    ext: share.file_ext || getFileExtension(share.file_name)
+  })
 }
 
 const loadShares = async () => {
@@ -189,6 +228,48 @@ const deleteShare = async (share) => {
     loadShares()
   } catch (error) {
     if (error !== 'cancel') ElMessage.error('删除失败')
+  }
+}
+
+const previewShare = (share) => {
+  currentPreviewShare.value = share
+  showPreviewDialog.value = true
+}
+
+const fetchPreviewText = async () => {
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    let message = '无法读取文件内容'
+    try {
+      const data = await response.json()
+      message = data.detail || message
+    } catch {
+      // ignore
+    }
+    throw new Error(message)
+  }
+  return response.text()
+}
+
+const downloadPreviewFile = async () => {
+  const share = currentPreviewShare.value
+  if (!share) return
+  try {
+    const response = await fetch(`/api/shares/${share.share_code}/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: share.password || null })
+    })
+    if (!response.ok) throw new Error('下载失败')
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = share.file_name
+    link.click()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    ElMessage.error(error.message || '下载失败')
   }
 }
 

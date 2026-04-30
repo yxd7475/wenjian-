@@ -7,10 +7,12 @@ import hashlib
 import aiofiles
 import zipfile
 import tempfile
+import chardet
+from urllib.parse import quote
 from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, UploadFile, File, Form, Body
-from fastapi.responses import StreamingResponse, FileResponse as FastAPIFileResponse
+from fastapi.responses import StreamingResponse, FileResponse as FastAPIFileResponse, Response
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -915,9 +917,58 @@ async def preview_file(
     if not os.path.exists(storage_path):
         raise HTTPException(status_code=404, detail="文件已被删除")
 
+    mime_type = file_record.mime_type or 'application/octet-stream'
+    
+    # 对于文本文件，自动检测编码并转换为 UTF-8
+    if mime_type.startswith('text/'):
+        async with aiofiles.open(storage_path, 'rb') as f:
+            raw_data = await f.read()
+        
+        # 检测编码
+        detected = chardet.detect(raw_data)
+        encoding = detected.get('encoding', 'utf-8')
+        print(f"[预览] 检测到编码: {encoding}, 文件: {file_record.origin_name}")
+        
+        # 对文件名进行 URL 编码
+        encoded_filename = quote(file_record.origin_name)
+        
+        # 如果检测到 GBK/GB2312，转换为 UTF-8
+        if encoding and encoding.lower() in ['gb2312', 'gbk', 'gb18030']:
+            try:
+                text_content = raw_data.decode('gbk')
+                utf8_content = text_content.encode('utf-8')
+                print(f"[预览] GBK转UTF-8成功, 内容前50字符: {text_content[:50]}")
+                return Response(
+                    content=utf8_content,
+                    media_type='text/plain; charset=utf-8',
+                    headers={
+                        'Content-Disposition': f"inline; filename*=UTF-8''{encoded_filename}",
+                        'Cache-Control': 'no-cache'
+                    }
+                )
+            except Exception as e:
+                print(f"[预览] GBK解码失败: {e}")
+        
+        # 其他编码，尝试直接返回
+        try:
+            text_content = raw_data.decode(encoding or 'utf-8')
+            utf8_content = text_content.encode('utf-8')
+            print(f"[预览] 使用{encoding}解码成功")
+            return Response(
+                content=utf8_content,
+                media_type='text/plain; charset=utf-8',
+                headers={
+                    'Content-Disposition': f"inline; filename*=UTF-8''{encoded_filename}",
+                    'Cache-Control': 'no-cache'
+                }
+            )
+        except Exception as e:
+            print(f"[预览] 解码失败: {e}")
+
     return FastAPIFileResponse(
         path=storage_path,
-        media_type=file_record.mime_type,
+        media_type=mime_type,
+        filename=file_record.origin_name,
     )
 
 

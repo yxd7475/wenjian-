@@ -159,8 +159,8 @@
       <el-table-column label="名称" min-width="300">
         <template #default="{ row }">
           <div class="file-name">
-            <el-icon :size="24" :color="getFileIconColor(row)">
-              <component :is="getFileIcon(row)" />
+            <el-icon :size="24" :color="resolveFileIconColor(row)">
+              <component :is="resolveFileIcon(row)" />
             </el-icon>
             <span style="margin-left: 8px">{{ row.origin_name || row.name }}</span>
           </div>
@@ -176,20 +176,15 @@
           {{ formatDate(row.created_at || row.updated_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button size="small" @click.stop="downloadFileItem(row)" v-if="!row.is_folder">
-            下载
-          </el-button>
-          <el-button size="small" @click.stop="openFolder(row)" v-if="row.is_folder">
-            打开
-          </el-button>
-          <el-button size="small" type="primary" @click.stop="openShareDialog(row)" v-if="!row.is_folder">
-            分享
-          </el-button>
-          <el-button size="small" type="danger" @click.stop="deleteItem(row)">
-            删除
-          </el-button>
+          <el-button-group>
+            <el-button size="small" type="primary" plain @click.stop="previewFileItem(row)" v-if="canPreview(row)">预览</el-button>
+            <el-button size="small" @click.stop="downloadFileItem(row)" v-if="!row.is_folder">下载</el-button>
+            <el-button size="small" @click.stop="openFolder(row)" v-if="row.is_folder">打开</el-button>
+            <el-button size="small" type="primary" @click.stop="openShareDialog(row)" v-if="!row.is_folder">分享</el-button>
+            <el-button size="small" type="danger" @click.stop="deleteItem(row)">删除</el-button>
+          </el-button-group>
         </template>
       </el-table-column>
     </el-table>
@@ -302,6 +297,13 @@
       </template>
     </el-dialog>
 
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      @download="downloadPreviewFile"
+    />
+
     <!-- 邀请好友对话框 -->
     <el-dialog v-model="showInviteDialog" title="邀请好友加入群组" width="450px">
       <div v-if="inviteLoading" style="text-align: center; padding: 20px">
@@ -339,6 +341,8 @@ import { ChatDotRound, User, Setting, Picture, Folder, Document, Download, Plus,
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
 import { useUserStore } from '@/stores/user'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { buildFilePreviewUrl, getFileIcon, getFileIconColor, isPreviewable } from '@/utils/file'
 
 const route = useRoute()
 const router = useRouter()
@@ -362,6 +366,9 @@ const breadcrumb = ref([])
 const showUploadDialog = ref(false)
 const showMembersDialog = ref(false)
 const showSettingsDialog = ref(false)
+const showPreviewDialog = ref(false)
+const previewFile = ref(null)
+const previewUrl = ref('')
 
 // 邀请好友相关
 const showInviteDialog = ref(false)
@@ -490,28 +497,9 @@ const formatTime = (dateStr) => {
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-const getFileIcon = (row) => {
-  if (row.is_folder) return 'Folder'
-  const ext = row.ext?.toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext)) return 'Picture'
-  if (['pdf'].includes(ext)) return 'Document'
-  if (['doc', 'docx'].includes(ext)) return 'Document'
-  if (['xls', 'xlsx'].includes(ext)) return 'Grid'
-  if (['mp3', 'wav', 'flac'].includes(ext)) return 'Headset'
-  if (['mp4', 'avi', 'mov'].includes(ext)) return 'VideoPlay'
-  if (['zip', 'rar', '7z'].includes(ext)) return 'Files'
-  return 'Document'
-}
-
-const getFileIconColor = (row) => {
-  if (row.is_folder) return '#E6A23C'
-  const ext = row.ext?.toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext)) return '#67C23A'
-  if (['pdf'].includes(ext)) return '#F56C6C'
-  if (['doc', 'docx'].includes(ext)) return '#409EFF'
-  if (['xls', 'xlsx'].includes(ext)) return '#67C23A'
-  return '#909399'
-}
+const resolveFileIcon = (row) => row?.is_folder ? 'Folder' : getFileIcon(row)
+const resolveFileIconColor = (row) => row?.is_folder ? '#E6A23C' : getFileIconColor(row)
+const canPreview = (row) => !row?.is_folder && isPreviewable(row)
 
 const getFileUrl = (fileId) => {
   if (!fileId) return ''
@@ -711,7 +699,26 @@ const openFolder = (folder) => {
 const handleRowClick = (row) => {
   if (row.is_folder) {
     openFolder(row)
+    return
   }
+  if (canPreview(row)) {
+    previewFileItem(row)
+  }
+}
+
+const previewFileItem = (file) => {
+  if (!canPreview(file)) return
+  previewFile.value = file
+  previewUrl.value = buildFilePreviewUrl(file.id)
+  showPreviewDialog.value = true
+}
+
+const fetchPreviewText = async () => {
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    throw new Error('无法读取文件内容')
+  }
+  return response.text()
 }
 
 const createFolder = async () => {
@@ -740,6 +747,12 @@ const createFolder = async () => {
 const downloadFileItem = (file) => {
   const token = localStorage.getItem('token')
   window.open(`/api/files/${file.id}/download?token=${token}`, '_blank')
+}
+
+const downloadPreviewFile = () => {
+  if (previewFile.value) {
+    downloadFileItem(previewFile.value)
+  }
 }
 
 const deleteItem = async (item) => {
@@ -837,7 +850,7 @@ const fetchServerIp = async () => {
   try {
     const data = await api.get('/auth/server-info')
     if (data.local_ips && data.local_ips.length > 0) {
-      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.'))
+      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.') && !ip.startsWith('169.254.'))
       serverIp.value = preferredIp || data.local_ips[0]
     }
   } catch (error) {

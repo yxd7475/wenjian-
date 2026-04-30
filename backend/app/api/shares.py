@@ -34,6 +34,8 @@ class ShareResponse(BaseModel):
     share_code: str
     file_name: str
     file_size: int
+    file_ext: Optional[str]
+    mime_type: Optional[str]
     password: Optional[str]
     expire_at: Optional[datetime]
     max_downloads: int
@@ -49,11 +51,39 @@ class ShareInfo(BaseModel):
     id: int
     file_name: str
     file_size: int
+    file_ext: Optional[str]
+    mime_type: Optional[str]
     has_password: bool
     expire_at: Optional[datetime]
     download_count: int
     max_downloads: int
     is_active: bool
+
+
+async def get_valid_share(db: AsyncSession, share_code: str) -> FileShare:
+    result = await db.execute(
+        select(FileShare)
+        .where(FileShare.share_code == share_code)
+        .options(selectinload(FileShare.file))
+    )
+    share = result.scalar_one_or_none()
+
+    if not share:
+        raise HTTPException(status_code=404, detail="分享不存在")
+
+    if not share.is_active:
+        raise HTTPException(status_code=400, detail="分享已关闭")
+
+    if share.expire_at and share.expire_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="分享已过期")
+
+    if share.max_downloads > 0 and share.download_count >= share.max_downloads:
+        raise HTTPException(status_code=400, detail="下载次数已用完")
+
+    if not share.file or share.file.is_deleted:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return share
 
 
 @router.post("", response_model=ShareResponse)
@@ -115,6 +145,8 @@ async def create_share(
         share_code=share.share_code,
         file_name=file.origin_name,
         file_size=file.size,
+        file_ext=file.ext,
+        mime_type=file.mime_type,
         password=share.password,
         expire_at=utc_to_beijing(share.expire_at),  # 转换为北京时间显示
         max_downloads=share.max_downloads,
@@ -144,6 +176,8 @@ async def get_my_shares(
             share_code=s.share_code,
             file_name=s.file.origin_name if s.file else "文件已删除",
             file_size=s.file.size if s.file else 0,
+            file_ext=s.file.ext if s.file else None,
+            mime_type=s.file.mime_type if s.file else None,
             password=s.password,
             expire_at=utc_to_beijing(s.expire_at),  # 转换为北京时间显示
             max_downloads=s.max_downloads,
@@ -161,33 +195,14 @@ async def get_share_info(
     db: AsyncSession = Depends(get_db),
 ):
     """获取分享信息（公开接口）"""
-    result = await db.execute(
-        select(FileShare)
-        .where(FileShare.share_code == share_code)
-        .options(selectinload(FileShare.file))
-    )
-    share = result.scalar_one_or_none()
-
-    if not share:
-        raise HTTPException(status_code=404, detail="分享不存在")
-
-    if not share.is_active:
-        raise HTTPException(status_code=400, detail="分享已关闭")
-
-    # 使用 UTC 时间比较（数据库存储的是 UTC）
-    if share.expire_at and share.expire_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="分享已过期")
-
-    if share.max_downloads > 0 and share.download_count >= share.max_downloads:
-        raise HTTPException(status_code=400, detail="下载次数已用完")
-
-    if not share.file or share.file.is_deleted:
-        raise HTTPException(status_code=404, detail="文件不存在")
+    share = await get_valid_share(db, share_code)
 
     return ShareInfo(
         id=share.id,
         file_name=share.file.origin_name,
         file_size=share.file.size,
+        file_ext=share.file.ext,
+        mime_type=share.file.mime_type,
         has_password=bool(share.password),
         expire_at=utc_to_beijing(share.expire_at),  # 转换为北京时间显示
         download_count=share.download_count,
@@ -204,29 +219,7 @@ async def verify_share_password(
 ):
     """验证分享密码"""
     password = data.get("password")
-
-    result = await db.execute(
-        select(FileShare)
-        .where(FileShare.share_code == share_code)
-        .options(selectinload(FileShare.file))
-    )
-    share = result.scalar_one_or_none()
-
-    if not share:
-        raise HTTPException(status_code=404, detail="分享不存在")
-
-    if not share.is_active:
-        raise HTTPException(status_code=400, detail="分享已关闭")
-
-    # 使用 UTC 时间比较
-    if share.expire_at and share.expire_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="分享已过期")
-
-    if share.max_downloads > 0 and share.download_count >= share.max_downloads:
-        raise HTTPException(status_code=400, detail="下载次数已用完")
-
-    if not share.file or share.file.is_deleted:
-        raise HTTPException(status_code=404, detail="文件不存在")
+    share = await get_valid_share(db, share_code)
 
     # 验证密码
     if share.password:
@@ -234,6 +227,27 @@ async def verify_share_password(
             raise HTTPException(status_code=403, detail="密码错误")
 
     return {"verified": True}
+
+
+@router.get("/{share_code}/preview")
+async def preview_shared_file(
+    share_code: str,
+    password: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """预览分享文件，不增加下载次数"""
+    share = await get_valid_share(db, share_code)
+
+    if share.password and share.password != password:
+        raise HTTPException(status_code=403, detail="密码错误")
+
+    if not os.path.exists(share.file.storage_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return FileResponse(
+        path=share.file.storage_path,
+        media_type=share.file.mime_type or "application/octet-stream"
+    )
 
 
 @router.post("/{share_code}/download")
@@ -245,26 +259,7 @@ async def download_shared_file(
 ):
     """下载分享文件"""
     password = data.get("password") if data else None
-
-    result = await db.execute(
-        select(FileShare)
-        .where(FileShare.share_code == share_code)
-        .options(selectinload(FileShare.file))
-    )
-    share = result.scalar_one_or_none()
-
-    if not share:
-        raise HTTPException(status_code=404, detail="分享不存在")
-
-    if not share.is_active:
-        raise HTTPException(status_code=400, detail="分享已关闭")
-
-    # 使用 UTC 时间比较
-    if share.expire_at and share.expire_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="分享已过期")
-
-    if share.max_downloads > 0 and share.download_count >= share.max_downloads:
-        raise HTTPException(status_code=400, detail="下载次数已用完")
+    share = await get_valid_share(db, share_code)
 
     # 验证密码
     if share.password and share.password != password:

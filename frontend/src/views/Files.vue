@@ -151,8 +151,8 @@
         <el-table-column label="名称" min-width="300">
           <template #default="{ row }">
             <div class="file-item">
-              <el-icon class="file-icon" :style="{ color: getFileIconColor(row) }">
-                <component :is="getFileIcon(row)" />
+              <el-icon class="file-icon" :style="{ color: resolveFileIconColor(row) }">
+                <component :is="resolveFileIcon(row)" />
               </el-icon>
               <span class="file-name" @click="handleFileClick(row)" style="cursor: pointer">
                 {{ row.origin_name || row.name }}
@@ -224,8 +224,8 @@
       >
         <div class="grid-item-content">
           <div class="grid-icon">
-            <el-icon :size="48" :style="{ color: getFileIconColor(file) }">
-              <component :is="getFileIcon(file)" />
+            <el-icon :size="48" :style="{ color: resolveFileIconColor(file) }">
+              <component :is="resolveFileIcon(file)" />
             </el-icon>
           </div>
           <div class="grid-info">
@@ -354,33 +354,12 @@
       </template>
     </el-dialog>
 
-    <!-- 文件预览对话框 -->
-    <el-dialog v-model="showPreviewDialog" :title="previewFile?.origin_name" width="80%" top="5vh">
-      <div v-if="previewFileType === 'image'" style="text-align: center">
-        <img :src="previewUrl" style="max-width: 100%; max-height: 70vh" />
-      </div>
-      <iframe
-        v-else-if="previewFileType === 'pdf'"
-        :src="previewUrl"
-        style="width: 100%; height: 75vh; border: none"
-      />
-      <video
-        v-else-if="previewFileType === 'video'"
-        :src="previewUrl"
-        controls
-        style="max-width: 100%; max-height: 75vh"
-      />
-      <audio
-        v-else-if="previewFileType === 'audio'"
-        :src="previewUrl"
-        controls
-        style="width: 100%"
-      />
-      <pre v-else-if="previewFileType === 'text'" class="text-preview">{{ textContent }}</pre>
-      <div v-else style="text-align: center; padding: 40px; color: #909399">
-        该文件类型不支持预览，请下载后查看
-      </div>
-    </el-dialog>
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      @download="downloadPreviewFile"
+    />
 
     <!-- 回收站对话框 -->
     <el-dialog v-model="showTrashDialog" title="回收站" width="900px">
@@ -468,11 +447,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Folder, Document, Picture, VideoCamera, Headset, Files, Notebook,
-  ArrowUp, ArrowDown, Share
+  Folder, ArrowUp, ArrowDown, Share
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { buildFilePreviewUrl, getFileIcon, getFileIconColor, isPreviewable } from '@/utils/file'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -517,8 +497,6 @@ const renameValue = ref('')
 const renameTarget = ref(null)
 const previewFile = ref(null)
 const previewUrl = ref('')
-const previewFileType = ref('')
-const textContent = ref('')
 
 // 移动/复制相关
 const moveCopyMode = ref('move')
@@ -556,8 +534,7 @@ const fetchServerIp = async () => {
   try {
     const data = await api.get('/auth/server-info')
     if (data.local_ips && data.local_ips.length > 0) {
-      // 优先选择非 172.x（WSL）的 IP
-      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.'))
+      const preferredIp = data.local_ips.find(ip => !ip.startsWith('172.') && !ip.startsWith('169.254.'))
       serverIp.value = preferredIp || data.local_ips[0]
     }
   } catch (error) {
@@ -618,40 +595,14 @@ const sortedFiles = computed(() => {
 })
 
 // 方法
-const canPreview = (row) => {
-  if (!row || row.is_folder) return false
-  const ext = row.ext?.toLowerCase()
-  const previewExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf', 'txt', 'md', 'log', 'json', 'xml', 'mp4', 'webm', 'mp3', 'wav']
-  return previewExts.includes(ext)
-}
+const canPreview = (row) => !row?.is_folder && isPreviewable(row)
 
 const toggleSortOrder = () => {
   sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
 }
 
-const getFileIcon = (row) => {
-  if (row.is_folder) return Folder
-  const ext = row.ext?.toLowerCase()
-  const extIconMap = {
-    'pdf': Document, 'doc': Document, 'docx': Document, 'xls': Document, 'xlsx': Document,
-    'ppt': Document, 'pptx': Document, 'jpg': Picture, 'jpeg': Picture, 'png': Picture,
-    'gif': Picture, 'webp': Picture, 'bmp': Picture, 'mp3': Headset, 'wav': Headset,
-    'mp4': VideoCamera, 'avi': VideoCamera, 'mov': VideoCamera, 'webm': VideoCamera,
-    'zip': Files, 'rar': Files, '7z': Files, 'txt': Notebook, 'md': Notebook, 'log': Notebook
-  }
-  return extIconMap[ext] || Document
-}
-
-const getFileIconColor = (row) => {
-  if (row.is_folder) return '#E6A23C'
-  const ext = row.ext?.toLowerCase()
-  const colorMap = {
-    'pdf': '#F56C6C', 'doc': '#409EFF', 'docx': '#409EFF', 'xls': '#67C23A', 'xlsx': '#67C23A',
-    'ppt': '#E6A23C', 'pptx': '#E6A23C', 'jpg': '#67C23A', 'jpeg': '#67C23A', 'png': '#67C23A',
-    'gif': '#67C23A', 'mp3': '#909399', 'mp4': '#909399', 'txt': '#909399', 'md': '#909399'
-  }
-  return colorMap[ext] || '#909399'
-}
+const resolveFileIcon = (row) => row?.is_folder ? Folder : getFileIcon(row)
+const resolveFileIconColor = (row) => row?.is_folder ? '#E6A23C' : getFileIconColor(row)
 
 const formatSize = (bytes) => {
   if (bytes === 0) return '0 B'
@@ -747,6 +698,10 @@ const handleFileClick = (row) => {
     currentFolderId.value = row.id
     page.value = 1
     loadFiles()
+    return
+  }
+  if (canPreview(row)) {
+    previewFileItem(row)
   }
 }
 
@@ -948,28 +903,23 @@ const batchDownload = async () => {
 
 const previewFileItem = async (file) => {
   previewFile.value = file
-  const token = localStorage.getItem('token')
-  previewUrl.value = `/api/files/${file.id}/preview?token=${token}`
-  const ext = file.ext?.toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-    previewFileType.value = 'image'
-  } else if (ext === 'pdf') {
-    previewFileType.value = 'pdf'
-  } else if (['mp4', 'webm', 'mov'].includes(ext)) {
-    previewFileType.value = 'video'
-  } else if (['mp3', 'wav', 'ogg'].includes(ext)) {
-    previewFileType.value = 'audio'
-  } else if (['txt', 'md', 'log', 'json', 'xml', 'html', 'css', 'js'].includes(ext)) {
-    previewFileType.value = 'text'
-    try {
-      textContent.value = await (await fetch(previewUrl.value)).text()
-    } catch {
-      textContent.value = '无法读取文件内容'
-    }
-  } else {
-    previewFileType.value = 'unsupported'
-  }
+  previewUrl.value = buildFilePreviewUrl(file.id)
   showPreviewDialog.value = true
+}
+
+const fetchPreviewText = async () => {
+  if (!previewUrl.value) return ''
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    throw new Error('无法读取文件内容')
+  }
+  return response.text()
+}
+
+const downloadPreviewFile = () => {
+  if (previewFile.value) {
+    downloadFile(previewFile.value)
+  }
 }
 
 const renameItem = (row) => {
@@ -1247,17 +1197,6 @@ onUnmounted(() => {
 }
 .context-menu-danger {
   color: #F56C6C;
-}
-
-/* 文本预览 */
-.text-preview {
-  max-height: 70vh;
-  overflow: auto;
-  background: #f5f5f5;
-  padding: 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  line-height: 1.6;
 }
 
 .upload-progress {

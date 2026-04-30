@@ -206,10 +206,15 @@ const handleNotificationClick = async (notification) => {
       router.push('/groups')
       break
     case 'chat_message':
+      if (data.sender_id || notification.related_id) {
+        router.push(`/chat?friendId=${data.sender_id || notification.related_id}`)
+      } else {
+        router.push('/chat')
+      }
+      break
     case 'group_chat_message':
-      // 跳转到群组详情页（聊天）
       if (data.group_id || notification.related_id) {
-        router.push(`/groups/${data.group_id || notification.related_id}`)
+        router.push(`/chat?groupId=${data.group_id || notification.related_id}`)
       } else {
         router.push('/chat')
       }

@@ -2,16 +2,38 @@
  * 文件工具函数
  */
 
-// 格式化文件大小
+const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+const videoExts = ['mp4', 'webm', 'mov', 'avi', 'mkv']
+const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac']
+const textExts = [
+  'txt', 'md', 'log', 'json', 'xml', 'html', 'htm', 'css', 'js', 'ts',
+  'jsx', 'tsx', 'vue', 'java', 'py', 'sql', 'yaml', 'yml', 'csv', 'ini',
+  'conf', 'sh', 'bat', 'ps1'
+]
+const officeExts = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']
+const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz']
+
+function resolveExt(input) {
+  if (!input) return ''
+  if (typeof input === 'string') {
+    const parts = input.split('.')
+    return parts.length > 1 ? parts.pop().toLowerCase() : ''
+  }
+  // 优先使用后端返回的 ext 字段
+  if (input.ext) return input.ext.toLowerCase()
+  const filename = input.origin_name || input.name || input.file_name || ''
+  const parts = filename.split('.')
+  return parts.length > 1 ? parts.pop().toLowerCase() : ''
+}
+
 export function formatSize(bytes) {
-  if (bytes === 0) return '0 B'
+  if (!bytes) return '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 格式化日期
 export function formatDate(dateStr, format = 'datetime') {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
@@ -21,67 +43,67 @@ export function formatDate(dateStr, format = 'datetime') {
   return date.toLocaleString('zh-CN')
 }
 
-// 获取文件图标
-export function getFileIcon(ext) {
-  const iconMap = {
-    'pdf': 'Document',
-    'doc': 'Document',
-    'docx': 'Document',
-    'xls': 'Document',
-    'xlsx': 'Document',
-    'ppt': 'Document',
-    'pptx': 'Document',
-    'jpg': 'Picture',
-    'jpeg': 'Picture',
-    'png': 'Picture',
-    'gif': 'Picture',
-    'webp': 'Picture',
-    'mp3': 'Headset',
-    'mp4': 'VideoCamera',
-    'zip': 'Files',
-    'rar': 'Files',
-    '7z': 'Files',
-    'txt': 'Notebook',
-    'md': 'Notebook'
-  }
-  return iconMap[ext?.toLowerCase()] || 'Document'
+export function getFileIcon(input) {
+  const ext = resolveExt(input)
+  if (imageExts.includes(ext)) return 'Picture'
+  if (videoExts.includes(ext)) return 'VideoPlay'
+  if (audioExts.includes(ext)) return 'Headset'
+  if (textExts.includes(ext)) return 'Notebook'
+  if (archiveExts.includes(ext)) return 'Files'
+  if (officeExts.includes(ext) || ext === 'pdf') return 'Document'
+  return 'Document'
 }
 
-// 获取文件图标颜色
-export function getFileIconColor(ext) {
-  const colorMap = {
-    'pdf': '#F56C6C',
-    'doc': '#409EFF',
-    'docx': '#409EFF',
-    'xls': '#67C23A',
-    'xlsx': '#67C23A',
-    'ppt': '#E6A23C',
-    'pptx': '#E6A23C',
-    'jpg': '#67C23A',
-    'jpeg': '#67C23A',
-    'png': '#67C23A',
-    'gif': '#67C23A',
-    'mp3': '#909399',
-    'mp4': '#909399'
-  }
-  return colorMap[ext?.toLowerCase()] || '#909399'
+export function getFileIconColor(input) {
+  const ext = resolveExt(input)
+  if (imageExts.includes(ext)) return '#67C23A'
+  if (ext === 'pdf') return '#F56C6C'
+  if (['doc', 'docx'].includes(ext)) return '#409EFF'
+  if (['xls', 'xlsx'].includes(ext)) return '#67C23A'
+  if (['ppt', 'pptx'].includes(ext)) return '#E6A23C'
+  if (videoExts.includes(ext) || audioExts.includes(ext)) return '#909399'
+  return '#909399'
 }
 
-// 判断是否可预览
-export function isPreviewable(ext) {
-  const previewable = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf', 'txt', 'md']
-  return previewable.includes(ext?.toLowerCase())
-}
-
-// 判断是否是图片
-export function isImage(ext) {
-  const images = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
-  return images.includes(ext?.toLowerCase())
-}
-
-// 获取文件扩展名
 export function getFileExtension(filename) {
   if (!filename) return ''
   const parts = filename.split('.')
   return parts.length > 1 ? parts.pop().toLowerCase() : ''
+}
+
+export function getPreviewType(input) {
+  const ext = resolveExt(input)
+  if (imageExts.includes(ext)) return 'image'
+  if (ext === 'pdf') return 'pdf'
+  if (videoExts.includes(ext)) return 'video'
+  if (audioExts.includes(ext)) return 'audio'
+  if (textExts.includes(ext)) return 'text'
+  if (['doc', 'docx'].includes(ext)) return 'word'
+  if (['xls', 'xlsx'].includes(ext)) return 'excel'
+  if (['ppt', 'pptx'].includes(ext)) return 'ppt'
+  return 'unsupported'
+}
+
+export function isPreviewable(input) {
+  return getPreviewType(input) !== 'unsupported'
+}
+
+export function isImage(input) {
+  return imageExts.includes(resolveExt(input))
+}
+
+export function isTextPreviewable(input) {
+  return getPreviewType(input) === 'text'
+}
+
+export function isOfficeDocument(input) {
+  return officeExts.includes(resolveExt(input))
+}
+
+export function buildFilePreviewUrl(fileId, token = localStorage.getItem('token')) {
+  return `/api/files/${fileId}/preview?token=${encodeURIComponent(token || '')}`
+}
+
+export function buildFileDownloadUrl(fileId, token = localStorage.getItem('token')) {
+  return `/api/files/${fileId}/download?token=${encodeURIComponent(token || '')}`
 }

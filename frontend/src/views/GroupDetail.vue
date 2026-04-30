@@ -100,7 +100,7 @@
                   </div>
 
                   <!-- 文件消息 -->
-                  <div v-else-if="msg.message_type === 'file'" class="message-bubble file-message" @click="downloadFile(msg)">
+                  <div v-else-if="msg.message_type === 'file'" class="message-bubble file-message" @click="handleFileMessageClick(msg)">
                     <div class="file-icon">
                       <el-icon :size="32"><Document /></el-icon>
                     </div>
@@ -359,6 +359,14 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      :text-request="fetchPreviewText"
+      @download="downloadPreviewFile"
+    />
   </div>
 </template>
 
@@ -370,6 +378,8 @@ import { User, Folder, Setting, Picture, Document, Download } from '@element-plu
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { buildFilePreviewUrl, getFileExtension, isPreviewable } from '@/utils/file'
 
 const route = useRoute()
 const router = useRouter()
@@ -403,6 +413,9 @@ const messageListRef = ref(null)
 const imageInput = ref(null)
 const fileInput = ref(null)
 const lastMessageTime = ref(null)
+const showPreviewDialog = ref(false)
+const previewFile = ref(null)
+const previewUrl = ref('')
 
 const currentUserId = computed(() => userStore.user?.id)
 
@@ -507,6 +520,18 @@ const getFileUrl = (fileId) => {
   if (!fileId) return ''
   const token = localStorage.getItem('token')
   return `/api/files/${fileId}/download?token=${token}`
+}
+
+const normalizeMessageFile = (msg) => ({
+  id: msg.file_id,
+  origin_name: msg.file_name,
+  size: msg.file_size,
+  ext: getFileExtension(msg.file_name)
+})
+
+const canPreviewMessageFile = (msg) => {
+  if (!msg?.file_id || !msg?.file_name) return false
+  return isPreviewable(normalizeMessageFile(msg))
 }
 
 const loadGroup = async () => {
@@ -633,9 +658,33 @@ const downloadFile = async (msg) => {
   window.open(`/api/files/${msg.file_id}/download?token=${token}`, '_blank')
 }
 
+const handleFileMessageClick = (msg) => {
+  if (canPreviewMessageFile(msg)) {
+    previewFile.value = normalizeMessageFile(msg)
+    previewUrl.value = buildFilePreviewUrl(msg.file_id)
+    showPreviewDialog.value = true
+    return
+  }
+  downloadFile(msg)
+}
+
 // 预览图片
 const previewImage = (msg) => {
   // el-image 组件已内置预览功能
+}
+
+const fetchPreviewText = async () => {
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    throw new Error('无法读取文件内容')
+  }
+  return response.text()
+}
+
+const downloadPreviewFile = () => {
+  if (previewFile.value?.id) {
+    downloadFile({ file_id: previewFile.value.id })
+  }
 }
 
 const scrollToBottom = () => {

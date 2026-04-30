@@ -57,8 +57,8 @@
       <el-table-column label="名称" min-width="300">
         <template #default="{ row }">
           <div class="file-name">
-            <el-icon :size="24" :color="getFileIconColor(row)">
-              <component :is="getFileIcon(row)" />
+            <el-icon :size="24" :color="resolveFileIconColor(row)">
+              <component :is="resolveFileIcon(row)" />
             </el-icon>
             <span style="margin-left: 8px">{{ row.origin_name }}</span>
             <el-tag v-if="row.category" size="small" :color="row.category.color" style="margin-left: 8px" effect="dark">
@@ -84,6 +84,9 @@
       </el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
+          <el-button size="small" type="primary" plain @click.stop="previewFileItem(row)" v-if="canPreview(row)">
+            预览
+          </el-button>
           <el-button size="small" @click.stop="downloadFile(row)">
             下载
           </el-button>
@@ -201,6 +204,14 @@
         <el-button type="primary" @click="showShareResult = false">确定</el-button>
       </template>
     </el-dialog>
+
+    <FilePreviewDialog
+      v-model="showPreviewDialog"
+      :file="previewFile"
+      :preview-url="previewUrl"
+      :text-request="fetchPreviewText"
+      @download="downloadPreviewFile"
+    />
   </div>
 </template>
 
@@ -211,6 +222,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
+import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
+import { buildFilePreviewUrl, getFileIcon, getFileIconColor, isPreviewable } from '@/utils/file'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -245,6 +258,9 @@ const shareForm = ref({
   expire_hours: 24,
   max_downloads: 0
 })
+const showPreviewDialog = ref(false)
+const previewFile = ref(null)
+const previewUrl = ref('')
 
 const shareLink = computed(() => {
   if (!shareResult.value) return ''
@@ -273,26 +289,9 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleString('zh-CN')
 }
 
-const getFileIcon = (row) => {
-  const ext = row.ext?.toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext)) return 'Picture'
-  if (['pdf'].includes(ext)) return 'Document'
-  if (['doc', 'docx'].includes(ext)) return 'Document'
-  if (['xls', 'xlsx'].includes(ext)) return 'Grid'
-  if (['mp3', 'wav', 'flac'].includes(ext)) return 'Headset'
-  if (['mp4', 'avi', 'mov'].includes(ext)) return 'VideoPlay'
-  if (['zip', 'rar', '7z'].includes(ext)) return 'Files'
-  return 'Document'
-}
-
-const getFileIconColor = (row) => {
-  const ext = row.ext?.toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(ext)) return '#67C23A'
-  if (['pdf'].includes(ext)) return '#F56C6C'
-  if (['doc', 'docx'].includes(ext)) return '#409EFF'
-  if (['xls', 'xlsx'].includes(ext)) return '#67C23A'
-  return '#909399'
-}
+const resolveFileIcon = (row) => getFileIcon(row)
+const resolveFileIconColor = (row) => getFileIconColor(row)
+const canPreview = (row) => isPreviewable(row)
 
 const loadPublicSpace = async () => {
   try {
@@ -354,12 +353,35 @@ const clearSearch = () => {
 }
 
 const handleRowClick = (row) => {
-  // 可以实现预览功能
+  if (canPreview(row)) {
+    previewFileItem(row)
+  }
+}
+
+const previewFileItem = (file) => {
+  if (!canPreview(file)) return
+  previewFile.value = file
+  previewUrl.value = buildFilePreviewUrl(file.id)
+  showPreviewDialog.value = true
+}
+
+const fetchPreviewText = async () => {
+  const response = await fetch(previewUrl.value)
+  if (!response.ok) {
+    throw new Error('无法读取文件内容')
+  }
+  return response.text()
 }
 
 const downloadFile = (file) => {
   const token = localStorage.getItem('token')
   window.open(`/api/files/${file.id}/download?token=${token}`, '_blank')
+}
+
+const downloadPreviewFile = () => {
+  if (previewFile.value) {
+    downloadFile(previewFile.value)
+  }
 }
 
 const handleFileChange = (file) => {
