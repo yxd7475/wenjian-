@@ -50,27 +50,29 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="存储配额" width="200">
           <template #default="{ row }">
-            <el-button size="small" @click="editUser(row)">编辑</el-button>
-            <el-button
-              size="small"
-              :type="row.status ? 'warning' : 'success'"
-              @click="toggleStatus(row)"
-            >
-              {{ row.status ? '禁用' : '启用' }}
-            </el-button>
-            <el-button size="small" @click="resetPassword(row)">
-              重置密码
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="deleteUser(row)"
-              :disabled="row.is_superuser"
-            >
-              删除
-            </el-button>
+            <div class="quota-cell">
+              <el-progress
+                :percentage="getQuotaPercentage(row)"
+                :stroke-width="6"
+                :color="getQuotaColor(row)"
+                :show-text="false"
+                style="flex: 1"
+              />
+              <span class="quota-text">{{ formatSize(row.storage_used || 0) }} / {{ formatSize(row.storage_quota) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="320" fixed="right">
+          <template #default="{ row }">
+            <el-button-group>
+              <el-button size="small" @click="editUser(row)">编辑</el-button>
+              <el-button size="small" @click="editQuota(row)">配额</el-button>
+              <el-button size="small" :type="row.status ? 'warning' : 'success'" @click="toggleStatus(row)">{{ row.status ? '禁用' : '启用' }}</el-button>
+              <el-button size="small" @click="resetPassword(row)">重置密码</el-button>
+              <el-button size="small" type="danger" @click="deleteUser(row)" :disabled="row.is_superuser">删除</el-button>
+            </el-button-group>
           </template>
         </el-table-column>
       </el-table>
@@ -137,6 +139,34 @@
         <el-button type="primary" @click="doResetPassword">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 修改配额对话框 -->
+    <el-dialog v-model="showQuotaDialog" title="修改存储配额" width="450px">
+      <div v-if="quotaTarget" style="margin-bottom: 16px">
+        <span style="color: var(--text-regular)">用户：</span>
+        <strong>{{ quotaTarget.username }}</strong>
+        <span style="margin-left: 16px; color: var(--text-light)">
+          已使用 {{ formatSize(quotaTarget.storage_used || 0) }}
+        </span>
+      </div>
+      <el-form label-width="80px">
+        <el-form-item label="配额大小">
+          <el-input-number
+            v-model="quotaGB"
+            :min="1"
+            :max="1000"
+            :step="1"
+            :precision="0"
+            style="width: 200px"
+          />
+          <span style="margin-left: 8px; color: var(--text-light)">GB</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showQuotaDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitQuota">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -156,9 +186,12 @@ const searchUsername = ref('')
 
 const showCreateDialog = ref(false)
 const showPasswordDialog = ref(false)
+const showQuotaDialog = ref(false)
 const editingUser = ref(null)
 const resetTarget = ref(null)
 const newPassword = ref('')
+const quotaTarget = ref(null)
+const quotaGB = ref(10)
 
 const formRef = ref()
 const form = reactive({
@@ -317,8 +350,155 @@ const formatDate = (dateStr) => {
   return new Date(dateStr).toLocaleString('zh-CN')
 }
 
+const formatSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const getQuotaPercentage = (row) => {
+  if (!row.storage_quota) return 0
+  const used = row.storage_used || 0
+  return Math.min(Math.round(used / row.storage_quota * 100), 100)
+}
+
+const getQuotaColor = (row) => {
+  const pct = getQuotaPercentage(row)
+  if (pct >= 90) return '#ff5b6e'
+  if (pct >= 70) return '#ff9f43'
+  return '#6ba3ff'
+}
+
+const editQuota = (user) => {
+  quotaTarget.value = user
+  quotaGB.value = Math.round((user.storage_quota || 10 * 1024 * 1024 * 1024) / 1024 / 1024 / 1024)
+  showQuotaDialog.value = true
+}
+
+const submitQuota = async () => {
+  if (!quotaTarget.value) return
+  try {
+    const newQuota = quotaGB.value * 1024 * 1024 * 1024
+    await api.put(`/users/${quotaTarget.value.id}`, {
+      storage_quota: newQuota
+    })
+    ElMessage.success(`已将 ${quotaTarget.value.username} 的配额修改为 ${quotaGB.value}GB`)
+    showQuotaDialog.value = false
+    loadUsers()
+  } catch (error) {
+    console.error('修改配额失败:', error)
+    ElMessage.error('修改配额失败')
+  }
+}
+
 onMounted(() => {
   loadUsers()
   loadRoles()
 })
 </script>
+
+<style scoped>
+.users-page {
+  max-width: 1400px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  backdrop-filter: blur(20px);
+}
+
+.toolbar-left, .toolbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.quota-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quota-text {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+.pagination-container {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(91, 154, 255, 0.035) !important;
+}
+
+:deep(.el-button-group) {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+:deep(.el-button-group .el-button) {
+  margin: 0;
+  border-radius: 0;
+}
+
+:deep(.el-button-group .el-button:first-child) {
+  border-radius: 10px 0 0 10px;
+}
+
+:deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 10px 10px 0;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+}
+</style>

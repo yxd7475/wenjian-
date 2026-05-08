@@ -3,7 +3,7 @@
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -12,6 +12,8 @@ from app.models.models import User, Space, Group, GroupMember, Folder, File
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/spaces", tags=["空间管理"])
+
+USER_STORAGE_LIMIT = 10 * 1024 * 1024 * 1024
 
 
 class SpaceResponse(BaseModel):
@@ -387,7 +389,37 @@ async def get_user_space_role(space: Space, user: User, db: AsyncSession) -> str
         return "none"
 
     elif space.space_type == "public":
-        # 公共空间：所有用户都是成员角色，可以上传和下载
         return "member"
 
     return "none"
+
+
+@router.get("/storage/usage")
+async def get_storage_usage(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Space).where(
+            Space.space_type == "personal",
+            Space.owner_id == current_user.id,
+            Space.status == True
+        )
+    )
+    personal_space = result.scalar_one_or_none()
+
+    used = 0
+    if personal_space:
+        size_result = await db.execute(
+            select(func.coalesce(func.sum(File.size), 0)).where(
+                File.space_id == personal_space.id,
+                File.is_deleted == False
+            )
+        )
+        used = size_result.scalar() or 0
+
+    return {
+        "used": used,
+        "limit": current_user.storage_quota,
+        "percentage": round(used / current_user.storage_quota * 100, 1) if current_user.storage_quota > 0 else 0
+    }

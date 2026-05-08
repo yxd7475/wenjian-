@@ -4,10 +4,10 @@
     <div v-if="sidebarVisible" class="sidebar-overlay" @click="toggleSidebar"></div>
 
     <!-- 侧边栏 -->
-    <aside :class="['main-aside', { 'sidebar-visible': sidebarVisible }]">
+    <aside :class="['main-aside', { 'sidebar-visible': sidebarVisible, 'main-aside-collapsed': sidebarCollapsed }]">
       <div class="logo">
         <el-icon><FolderOpened /></el-icon>
-        <span style="margin-left: 8px">文件共享系统</span>
+        <span v-show="!sidebarCollapsed" style="margin-left: 8px">文件共享系统</span>
         <el-button class="close-sidebar" @click="toggleSidebar" circle size="small">
           <el-icon><Close /></el-icon>
         </el-button>
@@ -16,9 +16,10 @@
       <!-- 空间导航 -->
       <el-menu
         :default-active="activeMenu"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409EFF"
+        :collapse="sidebarCollapsed"
+        background-color="transparent"
+        text-color="#5f6f89"
+        active-text-color="#5b9aff"
         router
         @select="handleMenuSelect"
       >
@@ -115,6 +116,23 @@
           </el-menu-item>
         </el-sub-menu>
       </el-menu>
+
+      <!-- 存储空间显示 -->
+      <div v-show="!sidebarCollapsed" class="storage-info">
+        <div class="storage-header">
+          <el-icon :size="16"><Coin /></el-icon>
+          <span>存储空间</span>
+        </div>
+        <el-progress
+          :percentage="storagePercentage"
+          :stroke-width="8"
+          :color="storageColor"
+          :show-text="false"
+        />
+        <div class="storage-text">
+          {{ formatStorageSize(storageUsed) }} / {{ formatStorageSize(storageLimit) }}
+        </div>
+      </div>
     </aside>
 
     <!-- 主内容区 -->
@@ -123,6 +141,9 @@
         <div class="header-left">
           <el-button class="menu-toggle" @click="toggleSidebar" circle size="small">
             <el-icon><Menu /></el-icon>
+          </el-button>
+          <el-button class="collapse-toggle" @click="toggleCollapse" circle size="small">
+            <el-icon><component :is="sidebarCollapsed ? Expand : Fold" /></el-icon>
           </el-button>
           <span class="header-title">{{ currentTitle }}</span>
         </div>
@@ -157,7 +178,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { ElMessage } from 'element-plus'
-import { Close, Menu, Grid } from '@element-plus/icons-vue'
+import { Close, Menu, Grid, Expand, Fold, Coin } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
 import NotificationCenter from '@/components/NotificationCenter.vue'
@@ -172,6 +193,28 @@ const personalSpaceId = ref(null)
 const pendingInvitations = ref(0)
 const pendingFriendRequests = ref(0)
 const sidebarVisible = ref(false)
+const sidebarCollapsed = ref(false)
+const storageUsed = ref(0)
+const storageLimit = ref(10 * 1024 * 1024 * 1024)
+
+const storagePercentage = computed(() => {
+  if (storageLimit.value === 0) return 0
+  return Math.min(Math.round(storageUsed.value / storageLimit.value * 100), 100)
+})
+
+const storageColor = computed(() => {
+  if (storagePercentage.value >= 90) return '#ff5b6e'
+  if (storagePercentage.value >= 70) return '#ff9f43'
+  return '#6ba3ff'
+})
+
+const formatStorageSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
 
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => route.meta.title || '文件共享系统')
@@ -195,6 +238,20 @@ const handleCommand = (command) => {
 
 const toggleSidebar = () => {
   sidebarVisible.value = !sidebarVisible.value
+}
+
+const toggleCollapse = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+const loadStorageUsage = async () => {
+  try {
+    const data = await api.get('/spaces/storage/usage')
+    storageUsed.value = data.used
+    storageLimit.value = data.limit
+  } catch (error) {
+    console.error('加载存储信息失败:', error)
+  }
 }
 
 const handleMenuSelect = () => {
@@ -248,6 +305,7 @@ onMounted(() => {
   loadGroups()
   loadInvitations()
   loadFriendRequests()
+  loadStorageUsage()
   chatStore.fetchUnreadCount()
 
   // 连接 WebSocket
@@ -380,23 +438,44 @@ onUnmounted(() => {
 }
 
 .main-aside {
-  width: 220px;
-  min-width: 220px;
-  background-color: #304156;
+  width: 248px;
+  min-width: 248px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  border-right: 1px solid rgba(220, 230, 246, 0.85);
   display: flex;
   flex-direction: column;
-  transition: transform 0.3s ease;
+  transition: width 0.3s ease, min-width 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.main-aside-collapsed {
+  width: 64px;
+  min-width: 64px;
 }
 
 .logo {
-  height: 60px;
+  height: 54px;
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: bold;
-  background-color: #263445;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.logo .el-icon {
+  font-size: 18px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.logo span {
+  font-size: 18px;
+  font-weight: 800;
+  color: #112544;
 }
 
 .close-sidebar {
@@ -404,13 +483,80 @@ onUnmounted(() => {
   margin-left: auto;
   background: transparent;
   border: none;
-  color: #fff;
+  color: #5f6f89;
 }
 
 .main-aside .el-menu {
   border-right: none;
   flex: 1;
   overflow-y: auto;
+  background: transparent;
+}
+
+.main-aside .el-menu:not(.el-menu--collapse) {
+  width: 248px;
+}
+
+.main-aside .el-menu .el-menu-item {
+  color: #5f6f89;
+  height: 44px;
+  line-height: 44px;
+  margin: 4px 8px;
+  border-radius: 13px;
+  font-size: 14px;
+}
+
+.main-aside .el-menu .el-menu-item:hover {
+  background: rgba(47, 123, 255, 0.08);
+  color: var(--primary);
+}
+
+.main-aside .el-menu .el-menu-item.is-active {
+  color: var(--primary);
+  background: linear-gradient(90deg, rgba(47, 123, 255, 0.16), rgba(47, 123, 255, 0.06));
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.main-aside .el-menu .el-sub-menu .el-sub-menu__title {
+  color: #5f6f89;
+  height: 44px;
+  line-height: 44px;
+  margin: 4px 8px;
+  border-radius: 13px;
+  font-size: 14px;
+}
+
+.main-aside .el-menu .el-sub-menu .el-sub-menu__title:hover {
+  background: rgba(47, 123, 255, 0.08);
+  color: var(--primary);
+}
+
+.main-aside .el-menu .el-sub-menu.is-active .el-sub-menu__title {
+  color: var(--primary);
+}
+
+.storage-info {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(247, 250, 255, 0.4);
+}
+
+.storage-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-regular);
+  margin-bottom: 10px;
+}
+
+.storage-text {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 8px;
+  text-align: center;
 }
 
 .main-container {
@@ -422,44 +568,70 @@ onUnmounted(() => {
 }
 
 .main-header {
-  height: 60px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  height: 72px;
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(220, 230, 246, 0.72);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 28px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  font-size: 16px;
-  font-weight: 500;
+  gap: 12px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
 .header-title {
-  margin-left: 12px;
+  margin-left: 4px;
 }
 
 .menu-toggle {
   display: none;
 }
 
+.collapse-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-regular);
+  transition: all 0.2s;
+}
+
+.collapse-toggle:hover {
+  color: var(--primary);
+  background: rgba(47, 123, 255, 0.08);
+}
+
 .header-right {
   display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 .user-info {
   display: flex;
   align-items: center;
   cursor: pointer;
-  color: #333;
+  color: var(--text-main);
+  padding: 8px 14px;
+  border-radius: 13px;
+  transition: all 0.22s;
+}
+
+.user-info:hover {
+  background: rgba(47, 123, 255, 0.08);
 }
 
 .user-name {
-  margin-left: 8px;
+  margin-left: 10px;
+  font-size: 14px;
+  color: var(--text-regular);
+  font-weight: 600;
 }
 
 .badge-item {
@@ -469,14 +641,14 @@ onUnmounted(() => {
 .main-content {
   flex: 1;
   overflow: auto;
-  background: #f5f7fa;
+  background: transparent;
+  padding: 26px 28px 40px;
 }
 
 .sidebar-overlay {
   display: none;
 }
 
-/* 手机端适配 */
 @media screen and (max-width: 768px) {
   .sidebar-overlay {
     display: block;
@@ -508,15 +680,18 @@ onUnmounted(() => {
 
   .menu-toggle {
     display: flex;
-    margin-right: 8px;
+  }
+
+  .collapse-toggle {
+    display: none;
   }
 
   .main-header {
-    padding: 0 12px;
+    padding: 0 16px;
   }
 
   .header-title {
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .user-name {
@@ -524,7 +699,7 @@ onUnmounted(() => {
   }
 
   .main-content {
-    padding: 0;
+    padding: 16px;
   }
 }
 </style>

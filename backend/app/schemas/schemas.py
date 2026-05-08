@@ -41,6 +41,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     department_id: Optional[int] = None
     role_id: Optional[int] = None
+    storage_quota: Optional[int] = Field(None, description="存储空间配额(字节)")
 
 
 class UserResponse(UserBase):
@@ -51,6 +52,8 @@ class UserResponse(UserBase):
     role: Optional[RoleResponse] = None
     status: bool
     is_superuser: bool
+    storage_quota: int = 10 * 1024 * 1024 * 1024
+    storage_used: Optional[int] = 0
     last_login: Optional[datetime]
     created_at: datetime
     updated_at: datetime

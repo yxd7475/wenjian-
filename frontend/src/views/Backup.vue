@@ -99,13 +99,11 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="restoreBackup(row)" :disabled="row.status !== 1">
-              恢复
-            </el-button>
-            <el-button size="small" @click="downloadBackup(row)" :disabled="row.status !== 1">
-              下载
-            </el-button>
-            <el-button size="small" type="danger" @click="deleteBackup(row)">删除</el-button>
+            <el-button-group>
+              <el-button size="small" @click="restoreBackup(row)" :disabled="row.status !== 1">恢复</el-button>
+              <el-button size="small" @click="downloadBackup(row)" :disabled="row.status !== 1">下载</el-button>
+              <el-button size="small" type="danger" @click="deleteBackup(row)">删除</el-button>
+            </el-button-group>
           </template>
         </el-table-column>
       </el-table>
@@ -294,7 +292,7 @@ const saveSchedule = async () => {
 .backup-icon {
   width: 64px;
   height: 64px;
-  border-radius: 8px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -306,12 +304,20 @@ const saveSchedule = async () => {
 }
 .backup-title {
   font-size: 16px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 800;
+  color: var(--text-main);
 }
 .backup-desc {
   font-size: 13px;
-  color: #909399;
+  color: var(--text-light);
   margin-top: 4px;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
 }
 </style>

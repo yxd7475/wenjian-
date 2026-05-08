@@ -20,12 +20,12 @@
             <el-table-column label="邀请时间" width="180">
               <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="200" fixed="right">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
-                <template v-if="row.status === 'pending'">
+                <el-button-group v-if="row.status === 'pending'">
                   <el-button size="small" type="primary" @click="acceptInvitation(row)">接受</el-button>
                   <el-button size="small" @click="rejectInvitation(row)">拒绝</el-button>
-                </template>
+                </el-button-group>
               </template>
             </el-table-column>
           </el-table>

@@ -22,6 +22,7 @@ class User(Base):
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True, comment="角色ID")
     status = Column(Boolean, default=True, comment="状态：启用/禁用")
     is_superuser = Column(Boolean, default=False, comment="是否超级管理员")
+    storage_quota = Column(BigInteger, default=10 * 1024 * 1024 * 1024, comment="存储空间配额(字节)")
     last_login = Column(DateTime, nullable=True, comment="最后登录时间")
     created_at = Column(DateTime, default=get_beijing_time, comment="创建时间")
     updated_at = Column(DateTime, default=get_beijing_time, onupdate=get_beijing_time, comment="更新时间")

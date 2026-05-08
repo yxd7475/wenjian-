@@ -383,17 +383,17 @@ onMounted(() => {
 .stat-card {
   text-align: center;
   padding: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
+  background: rgba(247, 250, 255, 0.6);
+  border-radius: 16px;
 }
 .stat-value {
   font-size: 28px;
-  font-weight: bold;
-  color: #409EFF;
+  font-weight: 800;
+  color: var(--primary);
 }
 .stat-label {
   margin-top: 8px;
-  color: #909399;
+  color: var(--text-light);
   font-size: 14px;
 }
 .type-item {
@@ -409,7 +409,7 @@ onMounted(() => {
 .type-item span:last-child {
   width: 100px;
   text-align: right;
-  color: #909399;
+  color: var(--text-light);
   font-size: 13px;
 }
 .unique-id-box {
@@ -420,13 +420,46 @@ onMounted(() => {
 .unique-id-value {
   font-family: monospace;
   font-size: 16px;
-  font-weight: bold;
-  color: #409EFF;
+  font-weight: 800;
+  color: var(--primary);
   letter-spacing: 1px;
 }
 .unique-id-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
   margin-top: 4px;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-card__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
 }
 </style>

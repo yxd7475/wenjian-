@@ -118,7 +118,9 @@
 
                 <!-- 文件消息 -->
                 <div v-else-if="msg.message_type === 'file'" class="message-bubble file-bubble" @click="handleFileMessageClick(msg)">
-                  <el-icon class="file-icon"><Document /></el-icon>
+                  <div class="file-icon-wrapper" :style="{ background: getFileIconBg({ ext: getFileExtension(msg.file_name) }) }">
+                    <el-icon :size="20" color="#fff"><component :is="getFileIcon({ ext: getFileExtension(msg.file_name) })" /></el-icon>
+                  </div>
                   <div class="file-info">
                     <div class="file-name">{{ msg.file_name }}</div>
                     <div class="file-size">{{ formatFileSize(msg.file_size) }}</div>
@@ -233,9 +235,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useChatStore } from '@/stores/chat'
 import { ElMessage } from 'element-plus'
-import { ChatDotRound, UserFilled, Picture, Folder, Document, Download, ArrowLeft, Plus, Loading } from '@element-plus/icons-vue'
+import { ChatDotRound, UserFilled, Picture, Folder, Document, Download, ArrowLeft, Plus, Loading, VideoPlay, Headset, Notebook, Files, Grid, DataBoard, Reading } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
+import { getFileIcon, getFileIconBg } from '@/utils/file'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import { buildFilePreviewUrl, getFileExtension, isPreviewable } from '@/utils/file'
 
@@ -674,20 +677,23 @@ watch(showInviteDialog, (newVal) => {
 
 .chat-container {
   height: 100%;
-  background: #fff;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  backdrop-filter: blur(20px);
   display: flex;
 }
 
 .conversation-list {
   width: 25%;
-  min-width: 250px;
-  border-right: 1px solid #e4e7ed;
+  min-width: 280px;
+  border-right: 1px solid rgba(224, 233, 248, 0.75);
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: rgba(247, 250, 255, 0.5);
 }
 
 .chat-area {
@@ -698,24 +704,26 @@ watch(showInviteDialog, (newVal) => {
   min-width: 0;
 }
 
-/* 返回按钮默认隐藏 */
 .back-btn {
   display: none;
   margin-right: 8px;
 }
 
 .conversation-header {
-  padding: 16px;
+  padding: 20px;
   font-size: 16px;
-  font-weight: bold;
-  border-bottom: 1px solid #e4e7ed;
+  font-weight: 800;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-main);
 }
 
 .chat-tabs {
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .chat-tabs :deep(.el-tabs__header) {
@@ -727,7 +735,13 @@ watch(showInviteDialog, (newVal) => {
 }
 
 .chat-tabs :deep(.el-tabs__item) {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-regular);
+}
+
+.chat-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--primary);
 }
 
 .conversations {
@@ -738,17 +752,21 @@ watch(showInviteDialog, (newVal) => {
 .conversation-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 14px 20px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  background: rgba(255, 255, 255, 0.6);
+  margin: 4px 8px;
+  border-radius: 13px;
 }
 
 .conversation-item:hover {
-  background-color: #f5f7fa;
+  background: rgba(47, 123, 255, 0.08);
 }
 
 .conversation-item.active {
-  background-color: #ecf5ff;
+  background: linear-gradient(90deg, rgba(47, 123, 255, 0.16), rgba(47, 123, 255, 0.06));
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .conv-info {
@@ -759,38 +777,45 @@ watch(showInviteDialog, (newVal) => {
 
 .conv-name {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--text-main);
 }
 
 .conv-last-msg {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: 4px;
 }
 
 .chat-header {
-  padding: 16px;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 800;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.chat-title {
+  color: var(--text-main);
 }
 
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  background-color: #f5f7fa;
+  padding: 20px;
+  background: linear-gradient(180deg, rgba(248, 249, 251, 0.6) 0%, rgba(240, 242, 245, 0.6) 100%);
 }
 
 .message-item {
   margin-bottom: 16px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .message-item.mine {
@@ -813,20 +838,26 @@ watch(showInviteDialog, (newVal) => {
 
 .sender-name {
   font-size: 12px;
-  color: #909399;
-  margin-bottom: 4px;
+  color: var(--text-light);
+  margin-bottom: 6px;
 }
 
 .message-bubble {
-  padding: 10px 14px;
-  border-radius: 8px;
-  background-color: #fff;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 16px rgba(70, 102, 155, 0.08);
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid rgba(218, 229, 247, 0.6);
 }
 
 .message-item.mine .message-bubble {
-  background-color: #95ec69;
+  background: linear-gradient(135deg, #6ba3ff, #5b9aff);
+  color: #fff;
+  border: none;
+  box-shadow: 0 6px 16px rgba(91, 154, 255, 0.25);
 }
 
 .image-bubble {
@@ -836,7 +867,7 @@ watch(showInviteDialog, (newVal) => {
 .chat-image {
   max-width: 200px;
   max-height: 200px;
-  border-radius: 4px;
+  border-radius: 12px;
   cursor: pointer;
 }
 
@@ -847,30 +878,42 @@ watch(showInviteDialog, (newVal) => {
   justify-content: center;
   width: 150px;
   height: 100px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  color: #909399;
+  background: rgba(247, 250, 255, 0.8);
+  border-radius: 12px;
+  color: var(--text-light);
 }
 
 .file-bubble {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 200px;
   cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 12px;
+  padding: 4px;
 }
 
 .file-bubble:hover {
-  background: #f0f0f0;
+  background: rgba(47, 123, 255, 0.06);
 }
 
 .message-item.mine .file-bubble:hover {
-  background: #7ed94e;
+  background: rgba(255, 255, 255, 0.15);
 }
 
-.file-icon {
-  font-size: 32px;
-  color: #409eff;
+.file-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.message-item.mine .file-icon-wrapper {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .file-info {
@@ -887,17 +930,26 @@ watch(showInviteDialog, (newVal) => {
 
 .file-size {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+.message-item.mine .file-size {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .download-icon {
-  color: #909399;
+  color: var(--text-light);
+}
+
+.message-item.mine .download-icon {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .message-time {
   font-size: 11px;
   color: #b0b0b0;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .message-item.mine .message-time {
@@ -905,14 +957,15 @@ watch(showInviteDialog, (newVal) => {
 }
 
 .input-area {
-  padding: 12px 16px;
-  border-top: 1px solid #e4e7ed;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .input-toolbar {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .no-chat-selected {
@@ -921,12 +974,13 @@ watch(showInviteDialog, (newVal) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  color: var(--text-light);
+  background: rgba(248, 249, 251, 0.6);
 }
 
 .no-messages {
   text-align: center;
-  color: #909399;
+  color: var(--text-light);
   padding: 40px;
 }
 
@@ -934,7 +988,69 @@ watch(showInviteDialog, (newVal) => {
   margin-left: 8px;
 }
 
-/* 手机端适配 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.invite-friend-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.invite-friend-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  transition: background 0.2s;
+}
+
+.invite-friend-item:last-child {
+  border-bottom: none;
+}
+
+.invite-friend-item:hover {
+  background: rgba(47, 123, 255, 0.06);
+  border-radius: 13px;
+}
+
+.friend-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.friend-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+}
+
 @media screen and (max-width: 768px) {
   .chat-page {
     height: calc(100vh - 80px);
@@ -966,7 +1082,7 @@ watch(showInviteDialog, (newVal) => {
   }
 
   .chat-header {
-    padding: 12px;
+    padding: 12px 16px;
   }
 
   .chat-title {
@@ -987,7 +1103,7 @@ watch(showInviteDialog, (newVal) => {
   }
 
   .input-area {
-    padding: 10px 12px;
+    padding: 12px 16px;
   }
 
   .conv-name {
@@ -995,44 +1111,7 @@ watch(showInviteDialog, (newVal) => {
   }
 
   .conversation-header {
-    padding: 12px;
+    padding: 12px 16px;
   }
-}
-
-/* 邀请好友对话框 */
-.header-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.invite-friend-list {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.invite-friend-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.invite-friend-item:last-child {
-  border-bottom: none;
-}
-
-.invite-friend-item:hover {
-  background-color: #f5f7fa;
-}
-
-.friend-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.friend-name {
-  font-size: 14px;
 }
 </style>

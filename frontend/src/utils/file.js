@@ -50,19 +50,33 @@ export function getFileIcon(input) {
   if (audioExts.includes(ext)) return 'Headset'
   if (textExts.includes(ext)) return 'Notebook'
   if (archiveExts.includes(ext)) return 'Files'
-  if (officeExts.includes(ext) || ext === 'pdf') return 'Document'
+  if (['doc', 'docx'].includes(ext)) return 'Document'
+  if (['xls', 'xlsx'].includes(ext)) return 'Grid'
+  if (['ppt', 'pptx'].includes(ext)) return 'DataBoard'
+  if (ext === 'pdf') return 'Reading'
   return 'Document'
 }
 
 export function getFileIconColor(input) {
+  return '#fff'
+}
+
+export function getFileIconBg(input) {
   const ext = resolveExt(input)
-  if (imageExts.includes(ext)) return '#67C23A'
-  if (ext === 'pdf') return '#F56C6C'
-  if (['doc', 'docx'].includes(ext)) return '#409EFF'
-  if (['xls', 'xlsx'].includes(ext)) return '#67C23A'
-  if (['ppt', 'pptx'].includes(ext)) return '#E6A23C'
-  if (videoExts.includes(ext) || audioExts.includes(ext)) return '#909399'
-  return '#909399'
+  if (imageExts.includes(ext)) return 'linear-gradient(135deg, #a855f7, #7c3aed)'
+  if (videoExts.includes(ext)) return 'linear-gradient(135deg, #f97316, #ea580c)'
+  if (audioExts.includes(ext)) return 'linear-gradient(135deg, #8b5cf6, #6d28d9)'
+  if (textExts.includes(ext)) return 'linear-gradient(135deg, #60a5fa, #3b82f6)'
+  if (archiveExts.includes(ext)) return 'linear-gradient(135deg, #fbbf24, #d97706)'
+  if (['doc', 'docx'].includes(ext)) return 'linear-gradient(135deg, #3b82f6, #2563eb)'
+  if (['xls', 'xlsx'].includes(ext)) return 'linear-gradient(135deg, #22c55e, #16a34a)'
+  if (['ppt', 'pptx'].includes(ext)) return 'linear-gradient(135deg, #f97316, #ea580c)'
+  if (ext === 'pdf') return 'linear-gradient(135deg, #ef4444, #dc2626)'
+  return 'linear-gradient(135deg, #94a3b8, #64748b)'
+}
+
+export function getFileIconBgFolder() {
+  return 'linear-gradient(135deg, #3b82f6, #2563eb)'
 }
 
 export function getFileExtension(filename) {

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.db.session import get_db
-from app.models.models import User, Department, Role, AuditLog, Space, Folder, Friendship
+from app.models.models import User, Department, Role, AuditLog, Space, Folder, File, Friendship
 from app.schemas import (
     UserCreate,
     UserUpdate,
@@ -132,8 +132,20 @@ async def list_users(
     result = await db.execute(query)
     users = result.scalars().all()
 
+    items = []
+    for u in users:
+        user_dict = UserResponse.model_validate(u).model_dump()
+        size_result = await db.execute(
+            select(func.coalesce(func.sum(File.size), 0)).where(
+                File.owner_id == u.id,
+                File.is_deleted == False
+            )
+        )
+        user_dict['storage_used'] = size_result.scalar() or 0
+        items.append(UserResponse(**user_dict))
+
     return UserListResponse(
-        items=[UserResponse.model_validate(u) for u in users],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
@@ -230,7 +242,7 @@ async def get_user(
     db: AsyncSession = Depends(get_db),
 ):
     """获取用户详情"""
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).options(selectinload(User.role)).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -259,7 +271,7 @@ async def update_user(
             detail="只能修改自己的信息",
         )
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).options(selectinload(User.role)).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -273,12 +285,13 @@ async def update_user(
         user.real_name = data.real_name
     if data.email is not None:
         user.email = data.email
-    # 只有管理员可以修改部门和角色
     if is_admin:
         if data.department_id is not None:
             user.department_id = data.department_id
         if data.role_id is not None:
             user.role_id = data.role_id
+        if data.storage_quota is not None:
+            user.storage_quota = data.storage_quota
 
     await db.commit()
     await db.refresh(user)
@@ -296,7 +309,18 @@ async def update_user(
     db.add(log)
     await db.commit()
 
-    return UserResponse.model_validate(user)
+    # 计算用户的已用存储空间
+    size_result = await db.execute(
+        select(func.coalesce(func.sum(File.size), 0)).where(
+            File.owner_id == user.id,
+            File.is_deleted == False
+        )
+    )
+    storage_used = size_result.scalar() or 0
+
+    user_dict = UserResponse.model_validate(user).model_dump()
+    user_dict['storage_used'] = storage_used
+    return UserResponse(**user_dict)
 
 
 @router.patch("/{user_id}/status", response_model=MessageResponse)

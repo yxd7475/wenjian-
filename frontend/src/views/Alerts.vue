@@ -76,11 +76,13 @@
             <el-tag v-else type="warning" size="small">未读</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="!row.is_read" size="small" @click="markRead(row)">标记已读</el-button>
-            <el-button v-if="!row.is_handled" size="small" type="primary" @click="handleAlert(row)">处理</el-button>
-            <el-button size="small" type="danger" @click="deleteAlert(row)">删除</el-button>
+            <el-button-group>
+              <el-button v-if="!row.is_read" size="small" @click="markRead(row)">标记已读</el-button>
+              <el-button v-if="!row.is_handled" size="small" type="primary" @click="handleAlert(row)">处理</el-button>
+              <el-button size="small" type="danger" @click="deleteAlert(row)">删除</el-button>
+            </el-button-group>
           </template>
         </el-table-column>
       </el-table>
@@ -207,20 +209,47 @@ onMounted(() => {
 }
 .stat-value {
   font-size: 32px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 800;
+  color: var(--text-main);
 }
 .stat-value.danger {
-  color: #F56C6C;
+  color: var(--red);
 }
 .stat-value.warning {
-  color: #E6A23C;
+  color: var(--orange);
 }
 .stat-value.info {
-  color: #409EFF;
+  color: var(--primary);
 }
 .stat-label {
-  color: #909399;
+  color: var(--text-light);
   margin-top: 8px;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
 }
 </style>

@@ -283,18 +283,109 @@ onMounted(async () => {
 .shares-page {
   max-width: 1400px;
 }
+
 .share-link-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
+
 .share-link-text {
-  color: #409EFF;
+  color: var(--primary);
   cursor: pointer;
   word-break: break-all;
   font-size: 13px;
+  transition: color 0.2s;
 }
+
 .share-link-text:hover {
   text-decoration: underline;
+  color: #6ba3ff;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-card__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 14px 0;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+  padding: 14px 0;
+}
+
+:deep(.el-table__row) {
+  transition: all 0.2s;
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
+}
+
+:deep(.el-button-group) {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+:deep(.el-button-group .el-button) {
+  margin: 0;
+  border-radius: 0;
+}
+
+:deep(.el-button-group .el-button:first-child) {
+  border-radius: 10px 0 0 10px;
+}
+
+:deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 10px 10px 0;
+}
+
+:deep(.el-tag) {
+  border-radius: 999px;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
 }
 </style>

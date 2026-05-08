@@ -151,9 +151,11 @@
         <el-table-column label="名称" min-width="300">
           <template #default="{ row }">
             <div class="file-item">
-              <el-icon class="file-icon" :style="{ color: resolveFileIconColor(row) }">
-                <component :is="resolveFileIcon(row)" />
-              </el-icon>
+              <div class="file-icon-wrapper" :style="{ background: resolveFileIconBg(row) }">
+                <el-icon :size="20" color="#fff">
+                  <component :is="resolveFileIcon(row)" />
+                </el-icon>
+              </div>
               <span class="file-name" @click="handleFileClick(row)" style="cursor: pointer">
                 {{ row.origin_name || row.name }}
               </span>
@@ -224,9 +226,11 @@
       >
         <div class="grid-item-content">
           <div class="grid-icon">
-            <el-icon :size="48" :style="{ color: resolveFileIconColor(file) }">
-              <component :is="resolveFileIcon(file)" />
-            </el-icon>
+            <div class="file-icon-wrapper-lg" :style="{ background: resolveFileIconBg(file) }">
+              <el-icon :size="36" color="#fff">
+                <component :is="resolveFileIcon(file)" />
+              </el-icon>
+            </div>
           </div>
           <div class="grid-info">
             <div class="grid-name">{{ file.origin_name || file.name }}</div>
@@ -371,10 +375,12 @@
         <el-table-column label="删除时间" width="160">
           <template #default="{ row }">{{ formatDate(row.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
-            <el-button size="small" type="primary" @click="restoreFile(row)">恢复</el-button>
-            <el-button size="small" type="danger" @click="permanentDelete(row)" v-if="userStore.isAdmin">彻底删除</el-button>
+            <el-button-group>
+              <el-button size="small" type="primary" @click="restoreFile(row)">恢复</el-button>
+              <el-button size="small" type="danger" @click="permanentDelete(row)" v-if="userStore.isAdmin">彻底删除</el-button>
+            </el-button-group>
           </template>
         </el-table-column>
       </el-table>
@@ -452,7 +458,7 @@ import {
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
-import { buildFilePreviewUrl, getFileIcon, getFileIconColor, isPreviewable } from '@/utils/file'
+import { buildFilePreviewUrl, getFileIcon, getFileIconColor, getFileIconBg, getFileIconBgFolder, isPreviewable } from '@/utils/file'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -602,7 +608,8 @@ const toggleSortOrder = () => {
 }
 
 const resolveFileIcon = (row) => row?.is_folder ? Folder : getFileIcon(row)
-const resolveFileIconColor = (row) => row?.is_folder ? '#E6A23C' : getFileIconColor(row)
+const resolveFileIconColor = (row) => row?.is_folder ? '#fff' : getFileIconColor(row)
+const resolveFileIconBg = (row) => row?.is_folder ? getFileIconBgFolder() : getFileIconBg(row)
 
 const formatSize = (bytes) => {
   if (bytes === 0) return '0 B'
@@ -1086,120 +1093,286 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.files-page {
+  background: transparent;
+}
+
 .toolbar {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  backdrop-filter: blur(20px);
 }
+
 .toolbar-left, .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
+
 .pagination-container {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
 }
+
 .file-item {
   display: flex;
   align-items: center;
 }
-.file-icon {
-  font-size: 24px;
-  margin-right: 8px;
-}
-.file-name {
-  cursor: pointer;
-}
-.file-name:hover {
-  color: #409EFF;
+
+.file-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
-/* 卡片视图 */
+.file-icon-wrapper-lg {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.file-icon {
+  font-size: 24px;
+  margin-right: 10px;
+}
+
+.file-name {
+  cursor: pointer;
+  transition: color 0.2s;
+  color: var(--text-main);
+}
+
+.file-name:hover {
+  color: var(--primary);
+}
+
 .grid-view {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
 }
+
 .grid-item {
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s ease;
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
 }
+
 .grid-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+  box-shadow: 0 22px 50px rgba(70, 102, 155, 0.18);
 }
+
 .grid-item-selected {
-  border: 2px solid #409EFF;
+  border: 2px solid var(--primary) !important;
+  box-shadow: 0 10px 28px rgba(47, 123, 255, 0.22);
 }
+
 .grid-item-content {
   text-align: center;
-  padding: 16px;
+  padding: 20px;
 }
+
 .grid-icon {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
+
 .grid-info {
   text-align: left;
 }
+
 .grid-name {
   font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
+
 .grid-meta {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
   display: flex;
   justify-content: space-between;
 }
+
 .grid-actions {
   display: flex;
   justify-content: center;
   gap: 8px;
-  padding: 8px;
-  border-top: 1px solid #eee;
-}
-.grid-item-skeleton {
-  height: 200px;
+  padding: 12px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(247, 250, 255, 0.6);
+  border-radius: 0 0 22px 22px;
 }
 
-/* 右键菜单 */
+.grid-item-skeleton {
+  height: 220px;
+}
+
 .context-menu {
   position: fixed;
-  background: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 16px;
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.18);
+  border: 1px solid rgba(218, 229, 247, 0.92);
   z-index: 9999;
-  min-width: 120px;
-  padding: 4px 0;
+  min-width: 140px;
+  padding: 8px 0;
+  backdrop-filter: blur(20px);
 }
+
 .context-menu-item {
-  padding: 8px 16px;
+  padding: 10px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-regular);
+  transition: all 0.2s;
+  border-radius: 10px;
+  margin: 2px 6px;
 }
+
 .context-menu-item:hover {
-  background: #f5f7fa;
+  background: rgba(47, 123, 255, 0.08);
+  color: var(--primary);
 }
+
 .context-menu-divider {
   height: 1px;
-  background: #eee;
-  margin: 4px 0;
+  background: rgba(224, 233, 248, 0.75);
+  margin: 6px 12px;
 }
+
 .context-menu-danger {
-  color: #F56C6C;
+  color: var(--red);
+}
+
+.context-menu-danger:hover {
+  background: rgba(255, 91, 110, 0.08);
+  color: var(--red);
 }
 
 .upload-progress {
-  margin-top: 10px;
+  margin-top: 12px;
+}
+
+:deep(.el-breadcrumb) {
+  font-size: 14px;
+}
+
+:deep(.el-breadcrumb__item) {
+  cursor: pointer;
+}
+
+:deep(.el-breadcrumb__inner) {
+  color: var(--text-regular);
+  transition: color 0.2s;
+}
+
+:deep(.el-breadcrumb__item:hover .el-breadcrumb__inner) {
+  color: var(--primary);
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 14px 0;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+  padding: 14px 0;
+}
+
+:deep(.el-table__row) {
+  transition: all 0.2s;
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
+}
+
+:deep(.el-button-group) {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+:deep(.el-button-group .el-button) {
+  margin: 0;
+  border-radius: 0;
+}
+
+:deep(.el-button-group .el-button:first-child) {
+  border-radius: 10px 0 0 10px;
+}
+
+:deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 10px 10px 0;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
 }
 </style>

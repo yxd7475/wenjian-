@@ -72,7 +72,9 @@
                 </div>
                 <!-- 文件消息 -->
                 <div v-else-if="msg.message_type === 'file'" class="message-bubble file-bubble" @click="downloadFile(msg)">
-                  <el-icon><Document /></el-icon>
+                  <div class="file-icon-wrapper-sm" :style="{ background: getFileIconBg({ ext: getFileExtension(msg.file_name) }) }">
+                    <el-icon :size="16" color="#fff"><component :is="getFileIcon({ ext: getFileExtension(msg.file_name) })" /></el-icon>
+                  </div>
                   <span class="file-name">{{ msg.file_name }}</span>
                   <span class="file-size">{{ formatFileSize(msg.file_size) }}</span>
                   <el-icon class="download-icon"><Download /></el-icon>
@@ -159,9 +161,11 @@
       <el-table-column label="名称" min-width="300">
         <template #default="{ row }">
           <div class="file-name">
-            <el-icon :size="24" :color="resolveFileIconColor(row)">
-              <component :is="resolveFileIcon(row)" />
-            </el-icon>
+            <div class="file-icon-wrapper" :style="{ background: resolveFileIconBg(row) }">
+              <el-icon :size="18" color="#fff">
+                <component :is="resolveFileIcon(row)" />
+              </el-icon>
+            </div>
             <span style="margin-left: 8px">{{ row.origin_name || row.name }}</span>
           </div>
         </template>
@@ -337,12 +341,12 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatDotRound, User, Setting, Picture, Folder, Document, Download, Plus, Loading } from '@element-plus/icons-vue'
+import { ChatDotRound, User, Setting, Picture, Folder, Document, Download, Plus, Loading, VideoPlay, Headset, Notebook, Files, Grid, DataBoard, Reading } from '@element-plus/icons-vue'
 import api from '@/utils/api'
 import { notificationService } from '@/utils/notifications'
 import { useUserStore } from '@/stores/user'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
-import { buildFilePreviewUrl, getFileIcon, getFileIconColor, isPreviewable } from '@/utils/file'
+import { buildFilePreviewUrl, getFileIcon, getFileIconColor, getFileIconBg, getFileIconBgFolder, isPreviewable } from '@/utils/file'
 
 const route = useRoute()
 const router = useRouter()
@@ -498,7 +502,8 @@ const formatTime = (dateStr) => {
 }
 
 const resolveFileIcon = (row) => row?.is_folder ? 'Folder' : getFileIcon(row)
-const resolveFileIconColor = (row) => row?.is_folder ? '#E6A23C' : getFileIconColor(row)
+const resolveFileIconColor = (row) => row?.is_folder ? '#fff' : getFileIconColor(row)
+const resolveFileIconBg = (row) => row?.is_folder ? getFileIconBgFolder() : getFileIconBg(row)
 const canPreview = (row) => !row?.is_folder && isPreviewable(row)
 
 const getFileUrl = (fileId) => {
@@ -933,20 +938,22 @@ watch(showInviteDialog, (newVal) => {
 
 <style scoped>
 .space-files {
-  padding: 20px;
+  background: transparent;
 }
 
 .space-title {
   font-size: 18px;
-  font-weight: bold;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
-/* 群组聊天区域 */
 .group-chat-section {
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
   overflow: hidden;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
 }
 
 .chat-header {
@@ -954,21 +961,22 @@ watch(showInviteDialog, (newVal) => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
+  background: rgba(247, 250, 255, 0.6);
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
 }
 
 .chat-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 800;
   font-size: 15px;
+  color: var(--text-main);
 }
 
 .member-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
   font-weight: normal;
 }
 
@@ -989,7 +997,7 @@ watch(showInviteDialog, (newVal) => {
   padding: 12px 16px;
   min-height: 150px;
   max-height: 250px;
-  background: #fafafa;
+  background: rgba(247, 250, 255, 0.3);
 }
 
 .message-item {
@@ -1013,7 +1021,7 @@ watch(showInviteDialog, (newVal) => {
 
 .sender-name {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-regular);
   margin-bottom: 4px;
 }
 
@@ -1023,16 +1031,20 @@ watch(showInviteDialog, (newVal) => {
 
 .message-bubble {
   padding: 8px 12px;
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
   font-size: 14px;
   line-height: 1.4;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 16px rgba(70, 102, 155, 0.08);
+  border: 1px solid rgba(218, 229, 247, 0.6);
 }
 
 .message-item.mine .message-bubble {
-  background: #95ec69;
+  background: linear-gradient(135deg, #6ba3ff, #5b9aff);
+  color: #fff;
+  border: none;
+  box-shadow: 0 6px 16px rgba(91, 154, 255, 0.25);
 }
 
 .image-bubble {
@@ -1042,7 +1054,7 @@ watch(showInviteDialog, (newVal) => {
 .chat-image {
   max-width: 150px;
   max-height: 150px;
-  border-radius: 4px;
+  border-radius: 12px;
   cursor: pointer;
 }
 
@@ -1052,14 +1064,16 @@ watch(showInviteDialog, (newVal) => {
   gap: 8px;
   cursor: pointer;
   min-width: 180px;
+  border-radius: 12px;
+  padding: 4px;
 }
 
 .file-bubble:hover {
-  background: #f0f0f0;
+  background: rgba(47, 123, 255, 0.06);
 }
 
 .message-item.mine .file-bubble:hover {
-  background: #7ed94e;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .file-bubble .file-name {
@@ -1072,11 +1086,11 @@ watch(showInviteDialog, (newVal) => {
 
 .file-bubble .file-size {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
 }
 
 .download-icon {
-  color: #909399;
+  color: var(--text-light);
   font-size: 16px;
 }
 
@@ -1092,14 +1106,14 @@ watch(showInviteDialog, (newVal) => {
 
 .no-messages {
   text-align: center;
-  color: #909399;
+  color: var(--text-light);
   padding: 30px;
 }
 
 .input-area {
   padding: 12px 16px;
-  border-top: 1px solid #e4e7ed;
-  background: #fff;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .input-toolbar {
@@ -1120,7 +1134,6 @@ watch(showInviteDialog, (newVal) => {
   opacity: 0;
 }
 
-/* 工具栏 */
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -1137,9 +1150,131 @@ watch(showInviteDialog, (newVal) => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  color: var(--text-main);
+  transition: color 0.2s;
 }
 
-/* 手机端适配 */
+.file-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-icon-wrapper-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-name:hover {
+  color: var(--primary);
+}
+
+.invite-friend-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.invite-friend-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  transition: background 0.2s;
+}
+
+.invite-friend-item:last-child {
+  border-bottom: none;
+}
+
+.invite-friend-item:hover {
+  background: rgba(47, 123, 255, 0.06);
+  border-radius: 13px;
+}
+
+.friend-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.friend-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
+}
+
+:deep(.el-button-group) {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+:deep(.el-button-group .el-button) {
+  margin: 0;
+  border-radius: 0;
+}
+
+:deep(.el-button-group .el-button:first-child) {
+  border-radius: 10px 0 0 10px;
+}
+
+:deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 10px 10px 0;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+}
+
 @media screen and (max-width: 768px) {
   .space-files {
     padding: 10px;
@@ -1153,9 +1288,8 @@ watch(showInviteDialog, (newVal) => {
     flex-wrap: wrap;
   }
 
-  /* 群组聊天区域 */
   .group-chat-section {
-    border-radius: 4px;
+    border-radius: 16px;
   }
 
   .chat-header {
@@ -1206,7 +1340,6 @@ watch(showInviteDialog, (newVal) => {
     padding: 10px;
   }
 
-  /* 工具栏 */
   .toolbar {
     flex-direction: column;
     gap: 10px;
@@ -1229,38 +1362,30 @@ watch(showInviteDialog, (newVal) => {
     width: 100% !important;
   }
 
-  /* 面包屑 */
   .el-breadcrumb {
     margin: 10px 0 !important;
     font-size: 12px;
   }
 
-  /* 表格 */
-  .el-table {
+  :deep(.el-table) {
     font-size: 13px;
   }
 
-  .el-table :deep(.el-table__cell) {
+  :deep(.el-table .el-table__cell) {
     padding: 8px 0;
   }
 
-  .el-table :deep(.file-name) {
-    font-size: 13px;
-  }
-
-  .el-table :deep(.el-button) {
+  :deep(.el-table .el-button) {
     padding: 4px 8px;
     font-size: 12px;
   }
 
-  /* 分页 */
-  .el-pagination {
+  :deep(.el-pagination) {
     flex-wrap: wrap;
     justify-content: center;
   }
 
-  /* 对话框 */
-  .el-dialog {
+  :deep(.el-dialog) {
     width: 95% !important;
     margin: 0 auto;
   }
@@ -1275,40 +1400,8 @@ watch(showInviteDialog, (newVal) => {
     padding: 4px 8px;
   }
 
-  .el-table :deep(.el-table__body-wrapper) {
+  :deep(.el-table .el-table__body-wrapper) {
     overflow-x: auto;
   }
-}
-
-/* 邀请好友对话框 */
-.invite-friend-list {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.invite-friend-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.invite-friend-item:last-child {
-  border-bottom: none;
-}
-
-.invite-friend-item:hover {
-  background-color: #f5f7fa;
-}
-
-.friend-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.friend-name {
-  font-size: 14px;
 }
 </style>

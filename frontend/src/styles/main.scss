@@ -8,30 +8,89 @@ html, body, #app {
   height: 100%;
 }
 
-// 主布局
 .main-layout {
   display: flex;
   height: 100%;
+  background: transparent;
 }
 
 .main-aside {
-  width: 220px;
-  background: #304156;
+  width: 248px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  border-right: 1px solid rgba(220, 230, 246, 0.85);
   transition: width 0.3s;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 
   .logo {
-    height: 60px;
+    height: 54px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    background: #263445;
-    color: #fff;
-    font-size: 16px;
-    font-weight: bold;
+    gap: 12px;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+    
+    .el-icon {
+      font-size: 18px;
+      color: var(--primary);
+    }
+
+    span {
+      font-size: 18px;
+      font-weight: 800;
+      color: #112544;
+    }
   }
 
   .el-menu {
     border-right: none;
+    background: transparent;
+    flex: 1;
+    
+    .el-menu-item {
+      color: #5f6f89;
+      height: 44px;
+      line-height: 44px;
+      margin: 4px 8px;
+      border-radius: 13px;
+      font-size: 14px;
+      
+      &:hover {
+        background: rgba(47, 123, 255, 0.08);
+        color: var(--primary);
+      }
+      
+      &.is-active {
+        color: var(--primary);
+        background: linear-gradient(90deg, rgba(47, 123, 255, 0.16), rgba(47, 123, 255, 0.06));
+        font-weight: 700;
+        box-shadow: inset 3px 0 0 var(--primary);
+      }
+    }
+    
+    .el-sub-menu {
+      .el-sub-menu__title {
+        color: #5f6f89;
+        height: 44px;
+        line-height: 44px;
+        margin: 4px 8px;
+        border-radius: 13px;
+        font-size: 14px;
+        
+        &:hover {
+          background: rgba(47, 123, 255, 0.08);
+          color: var(--primary);
+        }
+      }
+      
+      &.is-active {
+        .el-sub-menu__title {
+          color: var(--primary);
+        }
+      }
+    }
   }
 }
 
@@ -42,81 +101,73 @@ html, body, #app {
   overflow: hidden;
 
   .main-header {
-    height: 60px;
+    height: 72px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 20px;
-    background: #fff;
-    border-bottom: 1px solid #eee;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    padding: 0 28px;
+    background: rgba(255, 255, 255, 0.68);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(220, 230, 246, 0.72);
 
     .header-left {
-      font-size: 18px;
-      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      
+      .menu-toggle {
+        display: none;
+      }
+      
+      .header-title {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--text-main);
+      }
     }
 
     .header-right {
       display: flex;
       align-items: center;
       gap: 16px;
+      
+      .user-name {
+        font-size: 14px;
+        color: var(--text-regular);
+      }
     }
   }
 
   .main-content {
     flex: 1;
-    padding: 20px;
+    padding: 26px 28px 40px;
     overflow: auto;
-    background: #f5f7fa;
+    background: transparent;
   }
 }
 
-// 登录页面
-.login-container {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-
-  .login-box {
-    width: 400px;
-    padding: 40px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-
-    .login-title {
-      text-align: center;
-      margin-bottom: 30px;
-      font-size: 24px;
-      color: #333;
-    }
-  }
-}
-
-// 文件列表
 .file-list {
   .file-item {
     display: flex;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid rgba(229, 237, 250, 0.8);
     cursor: pointer;
     transition: background 0.2s;
 
     &:hover {
-      background: #f5f7fa;
+      background: rgba(47, 123, 255, 0.035);
     }
 
-    .file-icon {
-      width: 40px;
-      height: 40px;
+    .file-icon-wrapper {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       margin-right: 12px;
-      font-size: 24px;
+      flex-shrink: 0;
     }
 
     .file-info {
@@ -124,13 +175,13 @@ html, body, #app {
 
       .file-name {
         font-size: 14px;
-        color: #333;
+        color: var(--text-main);
         margin-bottom: 4px;
       }
 
       .file-meta {
         font-size: 12px;
-        color: #999;
+        color: var(--text-light);
       }
     }
 
@@ -145,48 +196,46 @@ html, body, #app {
   }
 }
 
-// 文件夹树
 .folder-tree {
   .el-tree-node__content {
     height: 36px;
   }
 }
 
-// 工具栏
 .toolbar {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 
   .toolbar-left {
     display: flex;
-    gap: 8px;
+    gap: 10px;
   }
 
   .toolbar-right {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
   }
 }
 
-// 文件上传区域
 .upload-area {
-  border: 2px dashed #dcdfe6;
-  border-radius: 8px;
+  border: 2px dashed rgba(210, 224, 246, 0.95);
+  border-radius: var(--radius-lg);
   padding: 40px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: all 0.3s;
 
   &:hover {
-    border-color: #409eff;
+    border-color: var(--primary);
+    background: rgba(47, 123, 255, 0.02);
   }
 
   &.is-dragover {
-    border-color: #409eff;
-    background: #ecf5ff;
+    border-color: var(--primary);
+    background: var(--primary-light);
   }
 
   .upload-icon {
@@ -196,18 +245,17 @@ html, body, #app {
   }
 
   .upload-text {
-    color: #606266;
+    color: var(--text-regular);
     font-size: 14px;
   }
 
   .upload-hint {
-    color: #909399;
+    color: var(--text-light);
     font-size: 12px;
     margin-top: 8px;
   }
 }
 
-// 状态标签
 .status-tag {
   &.success {
     background: #f0f9eb;
@@ -220,9 +268,39 @@ html, body, #app {
   }
 }
 
-// 分页
 .pagination-container {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media screen and (max-width: 768px) {
+  .main-aside {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    
+    &.sidebar-visible {
+      transform: translateX(0);
+    }
+  }
+  
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+  }
+  
+  .main-header {
+    .menu-toggle {
+      display: flex !important;
+    }
+  }
 }

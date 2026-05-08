@@ -19,10 +19,12 @@
             <el-table-column label="成为好友时间" width="180">
               <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="200">
+            <el-table-column label="操作" width="160">
               <template #default="{ row }">
-                <el-button size="small" type="primary" @click="openChat(row)">发消息</el-button>
-                <el-button size="small" type="danger" @click="deleteFriend(row)">删除</el-button>
+                <el-button-group>
+                  <el-button size="small" type="primary" @click="openChat(row)">发消息</el-button>
+                  <el-button size="small" type="danger" @click="deleteFriend(row)">删除</el-button>
+                </el-button-group>
               </template>
             </el-table-column>
           </el-table>
@@ -49,10 +51,12 @@
             <el-table-column label="申请时间" width="180">
               <template #default="{ row }">{{ formatDate(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="180">
+            <el-table-column label="操作" width="160">
               <template #default="{ row }">
-                <el-button size="small" type="primary" @click="acceptRequest(row)">接受</el-button>
-                <el-button size="small" @click="rejectRequest(row)">拒绝</el-button>
+                <el-button-group>
+                  <el-button size="small" type="primary" @click="acceptRequest(row)">接受</el-button>
+                  <el-button size="small" @click="rejectRequest(row)">拒绝</el-button>
+                </el-button-group>
               </template>
             </el-table-column>
           </el-table>
@@ -375,11 +379,17 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  transition: background 0.2s;
 }
 
 .search-result-item:last-child {
   border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: rgba(47, 123, 255, 0.06);
+  border-radius: 13px;
 }
 
 .user-info {
@@ -388,17 +398,68 @@ onMounted(() => {
 }
 
 .username {
-  font-weight: bold;
+  font-weight: 700;
+  color: var(--text-main);
 }
 
 .real-name {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
 }
 
 .unique-id {
   font-size: 11px;
-  color: #c0c4cc;
+  color: #b0bdd0;
   font-family: monospace;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+}
+
+:deep(.el-card__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-table) {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: rgba(247, 250, 255, 0.9) !important;
+  color: #6c7c95;
+  font-weight: 700;
+}
+
+:deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid rgba(229, 237, 250, 0.8);
+}
+
+:deep(.el-table__row:hover > td) {
+  background: rgba(47, 123, 255, 0.035) !important;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
 }
 </style>

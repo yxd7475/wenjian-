@@ -312,7 +312,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  background:
+    radial-gradient(circle at 85% 15%, rgba(47, 123, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 15% 80%, rgba(124, 92, 255, 0.1), transparent 32%),
+    linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
   padding: 20px;
 }
 .file-info {
@@ -322,11 +325,19 @@ onMounted(() => {
 }
 .file-details h3 {
   margin: 0 0 8px;
-  color: #303133;
+  color: var(--text-main);
 }
 .file-details p {
   margin: 4px 0;
-  color: #909399;
+  color: var(--text-light);
   font-size: 14px;
+}
+
+:deep(.el-card) {
+  border-radius: 22px;
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
 }
 </style>

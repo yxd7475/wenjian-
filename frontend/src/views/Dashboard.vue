@@ -329,7 +329,7 @@ onMounted(() => {
 .stat-icon {
   width: 64px;
   height: 64px;
-  border-radius: 8px;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -341,11 +341,11 @@ onMounted(() => {
 }
 .stat-value {
   font-size: 28px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 800;
+  color: var(--text-main);
 }
 .stat-label {
-  color: #909399;
+  color: var(--text-light);
   font-size: 14px;
   margin-top: 4px;
 }
@@ -358,12 +358,12 @@ onMounted(() => {
   width: 60px;
   text-transform: uppercase;
   font-size: 13px;
-  color: #606266;
+  color: var(--text-regular);
 }
 .type-count {
   width: 120px;
   text-align: right;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-light);
 }
 </style>

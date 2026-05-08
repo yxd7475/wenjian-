@@ -429,6 +429,19 @@ async def upload_file(
             detail=f"文件大小超过限制 ({settings.MAX_UPLOAD_SIZE // 1024 // 1024}MB)",
         )
 
+    user_total = await db.execute(
+        select(func.coalesce(func.sum(FileModel.size), 0)).where(
+            FileModel.owner_id == current_user.id,
+            FileModel.is_deleted == False
+        )
+    )
+    user_used = user_total.scalar() or 0
+    if user_used + len(content) > current_user.storage_quota:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"存储空间不足，已使用 {user_used // 1024 // 1024 // 1024}GB / {current_user.storage_quota // 1024 // 1024 // 1024}GB",
+        )
+
     # 确定空间和存储路径
     folder_path = ""
     actual_space_id = space_id

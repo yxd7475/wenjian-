@@ -101,8 +101,8 @@
 
                   <!-- 文件消息 -->
                   <div v-else-if="msg.message_type === 'file'" class="message-bubble file-message" @click="handleFileMessageClick(msg)">
-                    <div class="file-icon">
-                      <el-icon :size="32"><Document /></el-icon>
+                    <div class="file-icon-wrapper" :style="{ background: getFileIconBg({ ext: getFileExtension(msg.file_name) }) }">
+                      <el-icon :size="20" color="#fff"><component :is="getFileIcon({ ext: getFileExtension(msg.file_name) })" /></el-icon>
                     </div>
                     <div class="file-info">
                       <div class="file-name">{{ msg.file_name }}</div>
@@ -374,9 +374,10 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User, Folder, Setting, Picture, Document, Download } from '@element-plus/icons-vue'
+import { User, Folder, Setting, Picture, Document, Download, VideoPlay, Headset, Notebook, Files, Grid, DataBoard, Reading } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import api from '@/utils/api'
+import { getFileIcon, getFileIconBg } from '@/utils/file'
 import { notificationService } from '@/utils/notifications'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import { buildFilePreviewUrl, getFileExtension, isPreviewable } from '@/utils/file'
@@ -889,23 +890,25 @@ watch(groupId, (newId) => {
 
 <style scoped>
 .group-detail {
-  padding: 20px;
+  background: transparent;
   height: calc(100vh - 120px);
 }
 
 .group-title {
   font-size: 18px;
-  font-weight: bold;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
-/* QQ风格聊天容器 */
 .qq-chat-container {
   display: flex;
   height: 100%;
-  background: #fff;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 22px;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 45px rgba(70, 102, 155, 0.12);
+  border: 1px solid rgba(218, 229, 247, 0.92);
+  backdrop-filter: blur(20px);
 }
 
 .chat-main {
@@ -915,14 +918,13 @@ watch(groupId, (newId) => {
   min-width: 0;
 }
 
-/* 聊天头部 */
 .chat-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  border-bottom: 1px solid #e4e7ed;
-  background: #f5f7fa;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(247, 250, 255, 0.6);
 }
 
 .chat-title-info {
@@ -933,12 +935,13 @@ watch(groupId, (newId) => {
 
 .chat-name {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 800;
+  color: var(--text-main);
 }
 
 .chat-member-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
 }
 
 .chat-actions {
@@ -946,12 +949,11 @@ watch(groupId, (newId) => {
   gap: 8px;
 }
 
-/* 消息列表 */
 .message-list {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
-  background: #f5f7fa;
+  background: rgba(247, 250, 255, 0.3);
 }
 
 .message-item {
@@ -960,7 +962,7 @@ watch(groupId, (newId) => {
 
 .time-divider {
   text-align: center;
-  color: #909399;
+  color: var(--text-light);
   font-size: 12px;
   margin: 16px 0;
 }
@@ -993,19 +995,23 @@ watch(groupId, (newId) => {
 
 .sender-name {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-regular);
 }
 
 .message-bubble {
   padding: 10px 14px;
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(70, 102, 155, 0.08);
+  border: 1px solid rgba(218, 229, 247, 0.6);
 }
 
 .mine .message-bubble {
-  background: #95ec69;
+  background: linear-gradient(135deg, #6ba3ff, #5b9aff);
+  color: #fff;
+  border: none;
+  box-shadow: 0 6px 16px rgba(91, 154, 255, 0.25);
 }
 
 .text-message {
@@ -1020,7 +1026,7 @@ watch(groupId, (newId) => {
 .chat-image {
   max-width: 200px;
   max-height: 200px;
-  border-radius: 4px;
+  border-radius: 12px;
 }
 
 .image-placeholder {
@@ -1030,9 +1036,9 @@ watch(groupId, (newId) => {
   justify-content: center;
   width: 150px;
   height: 100px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  color: #909399;
+  background: rgba(247, 250, 255, 0.8);
+  border-radius: 12px;
+  color: var(--text-light);
 }
 
 .file-message {
@@ -1042,18 +1048,30 @@ watch(groupId, (newId) => {
   min-width: 200px;
   cursor: pointer;
   transition: background 0.2s;
+  border-radius: 12px;
+  padding: 4px;
 }
 
 .file-message:hover {
-  background: #f0f0f0;
+  background: rgba(47, 123, 255, 0.06);
 }
 
 .mine .file-message:hover {
-  background: #7ed94e;
+  background: rgba(255, 255, 255, 0.15);
 }
 
-.file-icon {
-  color: #409eff;
+.file-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mine .file-icon-wrapper {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .file-info {
@@ -1070,11 +1088,19 @@ watch(groupId, (newId) => {
 
 .file-size {
   font-size: 12px;
-  color: #909399;
+  color: var(--text-light);
+}
+
+.mine .file-size {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .download-icon {
-  color: #909399;
+  color: var(--text-light);
+}
+
+.mine .download-icon {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .message-time {
@@ -1092,19 +1118,19 @@ watch(groupId, (newId) => {
   justify-content: center;
   align-items: center;
   height: 100%;
+  color: var(--text-light);
 }
 
-/* 输入区域 */
 .input-area {
-  border-top: 1px solid #e4e7ed;
-  background: #fff;
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(255, 255, 255, 0.9);
 }
 
 .input-toolbar {
   display: flex;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.5);
 }
 
 .input-box {
@@ -1124,11 +1150,10 @@ watch(groupId, (newId) => {
   padding: 8px 16px;
 }
 
-/* 成员面板 */
 .member-panel {
   width: 260px;
-  border-left: 1px solid #e4e7ed;
-  background: #fff;
+  border-left: 1px solid rgba(224, 233, 248, 0.75);
+  background: rgba(255, 255, 255, 0.9);
   display: flex;
   flex-direction: column;
 }
@@ -1138,8 +1163,9 @@ watch(groupId, (newId) => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #e4e7ed;
-  font-weight: 600;
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+  font-weight: 800;
+  color: var(--text-main);
 }
 
 .member-list {
@@ -1153,13 +1179,13 @@ watch(groupId, (newId) => {
   align-items: center;
   gap: 10px;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: 13px;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .member-item:hover {
-  background: #f5f7fa;
+  background: rgba(47, 123, 255, 0.08);
 }
 
 .member-info {
@@ -1172,6 +1198,7 @@ watch(groupId, (newId) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-main);
 }
 
 .kick-btn {
@@ -1194,18 +1221,17 @@ watch(groupId, (newId) => {
   opacity: 0;
 }
 
-/* 邀请相关样式 */
 .invite-section {
   margin-top: 16px;
   padding: 16px;
-  background: #f0f9eb;
-  border-radius: 8px;
+  background: rgba(40, 199, 111, 0.08);
+  border-radius: 16px;
 }
 
 .invite-section-title {
-  font-weight: bold;
+  font-weight: 800;
   margin-bottom: 12px;
-  color: #67c23a;
+  color: var(--green);
 }
 
 .invite-link-display {
@@ -1214,7 +1240,7 @@ watch(groupId, (newId) => {
 
 .invite-code-text {
   font-size: 12px;
-  color: #606266;
+  color: var(--text-regular);
 }
 
 .invite-link-section {
@@ -1224,17 +1250,34 @@ watch(groupId, (newId) => {
 .invite-link-box {
   margin-top: 16px;
   padding: 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
+  background: rgba(247, 250, 255, 0.6);
+  border-radius: 16px;
 }
 
 .invite-info {
   margin-top: 12px;
   font-size: 13px;
-  color: #606266;
+  color: var(--text-regular);
 }
 
 .invite-info p {
   margin: 4px 0;
+}
+
+:deep(.el-dialog) {
+  border-radius: 22px;
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(224, 233, 248, 0.75);
+}
+
+:deep(.el-dialog__title) {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid rgba(224, 233, 248, 0.75);
 }
 </style>
