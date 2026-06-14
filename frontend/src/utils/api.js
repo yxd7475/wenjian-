@@ -48,3 +48,8 @@ api.interceptors.response.use(
 )
 
 export default api
+
+export function getDirectApiUrl(path) {
+  const host = window.location.hostname
+  return `http://${host}:8088${path}`
+}

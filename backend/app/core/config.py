@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     STORAGE_PATH: str = os.path.join(BASE_DIR, "data", "storage")
     UPLOAD_TEMP_PATH: str = os.path.join(BASE_DIR, "data", "temp")
     MAX_UPLOAD_SIZE: int = 524288000  # 500MB
-    ALLOWED_EXTENSIONS: str = "jpg,jpeg,png,gif,bmp,webp,pdf,txt,md,doc,docx,xls,xlsx,ppt,pptx,zip,rar,7z,mp3,mp4,avi,mov"
+    ALLOWED_EXTENSIONS: str = "jpg,jpeg,png,gif,bmp,webp,svg,ico,pdf,txt,md,log,doc,docx,xls,xlsx,ppt,pptx,zip,rar,7z,tar,gz,bz2,mp3,wav,ogg,flac,m4a,aac,mp4,webm,avi,mov,mkv,wmv,flv,json,xml,html,htm,css,js,ts,jsx,tsx,vue,py,java,c,cpp,h,hpp,cs,go,rs,rb,php,sql,yaml,yml,toml,ini,cfg,conf,sh,bat,ps1,csv,rtf,dockerfile,gitignore,env,md5,sha1,sha256,apk,exe,msi,dmg,pkg,deb,rpm,iso,img,disc,woff,woff2,ttf,otf,eot"
 
     # 日志配置
     LOG_LEVEL: str = "INFO"

@@ -147,8 +147,7 @@
 
           <!-- 输入区域 -->
           <div class="input-area">
-            <!-- 群组聊天工具栏 -->
-            <div class="input-toolbar" v-if="currentGroupId">
+            <div class="input-toolbar" v-if="currentFriendId || currentGroupId">
               <el-tooltip content="发送图片">
                 <el-button circle size="small" @click="sendImage">
                   <el-icon><Picture /></el-icon>
@@ -500,20 +499,29 @@ const handleFileSelect = async (event) => {
 
 // 上传聊天文件
 const uploadChatFile = async (file) => {
-  if (!currentGroupId.value) return
+  if (!currentGroupId.value && !currentFriendId.value) return
 
   sending.value = true
   try {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('group_id', currentGroupId.value)
 
-    const msg = await api.post('/group-chat/messages/file', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    groupMessages.value.push(msg)
+    if (currentGroupId.value) {
+      formData.append('group_id', currentGroupId.value)
+      const msg = await api.post('/group-chat/messages/file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      groupMessages.value.push(msg)
+      loadGroupConversations()
+    } else if (currentFriendId.value) {
+      formData.append('receiver_id', currentFriendId.value)
+      const msg = await api.post('/chat/messages/file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      messages.value.push(msg)
+      loadConversations()
+    }
     scrollToBottom()
-    loadGroupConversations()
   } catch (error) {
     console.error('发送文件失败:', error)
   } finally {
@@ -569,7 +577,11 @@ const handleWebSocketMessage = (msg) => {
       receiver_id: msg.receiver_id,
       sender_name: msg.sender_name,
       sender_real_name: msg.sender_real_name,
+      message_type: msg.message_type || 'text',
       content: msg.content,
+      file_id: msg.file_id,
+      file_name: msg.file_name,
+      file_size: msg.file_size,
       is_read: true,
       created_at: msg.created_at
     })
@@ -587,7 +599,11 @@ const handleWebSocketMessage = (msg) => {
       receiver_id: msg.receiver_id,
       sender_name: msg.sender_name,
       sender_real_name: msg.sender_real_name,
+      message_type: msg.message_type || 'text',
       content: msg.content,
+      file_id: msg.file_id,
+      file_name: msg.file_name,
+      file_size: msg.file_size,
       is_read: true,
       created_at: msg.created_at
     })

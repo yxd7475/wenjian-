@@ -397,13 +397,17 @@ class ChatMessage(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="发送者ID")
     receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False, comment="接收者ID")
+    message_type = Column(String(20), default="text", comment="消息类型：text/file/image")
     content = Column(Text, nullable=False, comment="消息内容")
+    file_id = Column(Integer, ForeignKey("files.id"), nullable=True, comment="关联文件ID")
+    file_name = Column(String(255), nullable=True, comment="文件名称")
+    file_size = Column(BigInteger, nullable=True, comment="文件大小")
     is_read = Column(Boolean, default=False, comment="是否已读")
     created_at = Column(DateTime, default=get_beijing_time)
 
-    # 关联
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
+    file = relationship("File")
 
 
 class GroupChatMessage(Base):

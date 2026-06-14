@@ -1,17 +1,20 @@
 """
 聊天 API
 """
+import os
+import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File as FastAPIFile, Form
 from sqlalchemy import select, or_, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime
 
 from app.db.session import get_db
-from app.models.models import User, Friendship, ChatMessage, Notification
+from app.models.models import User, Friendship, ChatMessage, Notification, File as FileModel, Space
 from app.api.deps import get_current_user
 from app.core.notifications import manager
+from app.core.config import settings
 from app.utils.timezone import get_beijing_time
 
 router = APIRouter(prefix="/chat", tags=["聊天"])
@@ -28,7 +31,11 @@ class MessageResponse(BaseModel):
     receiver_id: int
     sender_name: str
     sender_real_name: str = None
+    message_type: str = "text"
     content: str
+    file_id: int = None
+    file_name: str = None
+    file_size: int = None
     is_read: bool
     created_at: datetime
 
@@ -114,7 +121,11 @@ async def send_message(
         "receiver_id": message.receiver_id,
         "sender_name": current_user.username,
         "sender_real_name": current_user.real_name,
+        "message_type": message.message_type or "text",
         "content": message.content,
+        "file_id": message.file_id,
+        "file_name": message.file_name,
+        "file_size": message.file_size,
         "is_read": message.is_read,
         "created_at": message.created_at.isoformat() if message.created_at else None
     }
@@ -128,7 +139,11 @@ async def send_message(
             "sender_name": current_user.username,
             "sender_real_name": current_user.real_name,
             "receiver_id": data.receiver_id,
+            "message_type": message.message_type or "text",
             "content": message.content,
+            "file_id": message.file_id,
+            "file_name": message.file_name,
+            "file_size": message.file_size,
             "created_at": message.created_at.isoformat() if message.created_at else None,
             "notification_id": notification.id
         }
@@ -197,7 +212,11 @@ async def get_messages(
             "receiver_id": m.receiver_id,
             "sender_name": sender.username if sender else "",
             "sender_real_name": sender.real_name if sender else None,
+            "message_type": m.message_type or "text",
             "content": m.content,
+            "file_id": m.file_id,
+            "file_name": m.file_name,
+            "file_size": m.file_size,
             "is_read": m.is_read,
             "created_at": m.created_at.isoformat() if m.created_at else None
         })
@@ -297,3 +316,146 @@ async def get_unread_count(
     )
     count = len(result.scalars().all())
     return {"unread_count": count}
+
+
+@router.post("/messages/file")
+async def send_file_message(
+    receiver_id: int = Form(...),
+    file: UploadFile = FastAPIFile(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """发送文件消息给好友"""
+    if receiver_id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能给自己发送文件")
+
+    # 检查是否是好友
+    result = await db.execute(
+        select(Friendship).where(
+            or_(
+                and_(Friendship.requester_id == current_user.id, Friendship.addressee_id == receiver_id),
+                and_(Friendship.requester_id == receiver_id, Friendship.addressee_id == current_user.id)
+            ),
+            Friendship.status == "accepted"
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="只能给好友发送文件")
+
+    # 检查接收者是否存在
+    result = await db.execute(select(User).where(User.id == receiver_id, User.status == True))
+    receiver = result.scalar_one_or_none()
+    if not receiver:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 获取发送者的个人空间（用于存储文件记录）
+    result = await db.execute(
+        select(Space).where(Space.space_type == "personal", Space.owner_id == current_user.id, Space.status == True)
+    )
+    personal_space = result.scalar_one_or_none()
+
+    # 保存文件
+    file_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
+    stored_name = f"{uuid.uuid4().hex}{file_ext}"
+
+    chat_files_dir = os.path.join(settings.STORAGE_PATH, "chat_files", "private")
+    os.makedirs(chat_files_dir, exist_ok=True)
+
+    storage_path = os.path.join(chat_files_dir, stored_name)
+
+    content = await file.read()
+    file_size = len(content)
+
+    with open(storage_path, "wb") as f:
+        f.write(content)
+
+    # 判断文件类型
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+    message_type = "image" if file_ext.lower() in image_extensions else "file"
+
+    # 创建文件记录
+    file_record = None
+    if personal_space:
+        file_record = FileModel(
+            space_id=personal_space.id,
+            origin_name=file.filename or stored_name,
+            stored_name=stored_name,
+            storage_path=storage_path,
+            ext=file_ext.lstrip('.'),
+            mime_type=file.content_type,
+            size=file_size,
+            owner_id=current_user.id,
+        )
+        db.add(file_record)
+        await db.flush()
+        file_id = file_record.id
+    else:
+        file_id = None
+
+    # 创建消息
+    message = ChatMessage(
+        sender_id=current_user.id,
+        receiver_id=receiver_id,
+        message_type=message_type,
+        content=f"[文件] {file.filename}",
+        file_id=file_id,
+        file_name=file.filename,
+        file_size=file_size
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+
+    # 创建通知记录
+    notification = Notification(
+        user_id=receiver_id,
+        notification_type="chat_message",
+        title="新消息",
+        content=f"{current_user.real_name or current_user.username}: [文件] {file.filename}",
+        data={
+            "sender_id": current_user.id,
+            "sender_name": current_user.username,
+            "sender_real_name": current_user.real_name,
+            "message_id": message.id
+        },
+        related_id=message.id,
+        related_type="chat_message"
+    )
+    db.add(notification)
+    await db.commit()
+
+    msg_data = {
+        "id": message.id,
+        "sender_id": message.sender_id,
+        "receiver_id": message.receiver_id,
+        "sender_name": current_user.username,
+        "sender_real_name": current_user.real_name,
+        "message_type": message_type,
+        "content": message.content,
+        "file_id": file_id,
+        "file_name": file.filename,
+        "file_size": file_size,
+        "is_read": message.is_read,
+        "created_at": message.created_at.isoformat() if message.created_at else None
+    }
+
+    # 实时推送消息给接收者
+    await manager.send_personal_message({
+        "type": "chat_message",
+        "data": {
+            "id": message.id,
+            "sender_id": current_user.id,
+            "sender_name": current_user.username,
+            "sender_real_name": current_user.real_name,
+            "receiver_id": receiver_id,
+            "message_type": message_type,
+            "content": message.content,
+            "file_id": file_id,
+            "file_name": file.filename,
+            "file_size": file_size,
+            "created_at": message.created_at.isoformat() if message.created_at else None,
+            "notification_id": notification.id
+        }
+    }, receiver_id)
+
+    return msg_data

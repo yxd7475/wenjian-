@@ -11,7 +11,7 @@ import chardet
 from urllib.parse import quote
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, UploadFile, File as FastAPIFile, Form, Body
 from fastapi.responses import StreamingResponse, FileResponse as FastAPIFileResponse, Response
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +47,22 @@ def get_file_hash(file_path: str) -> str:
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+async def stream_file_to_disk(upload_file: UploadFile, storage_path: str, chunk_size: int = 1024 * 1024):
+    """流式写入文件到磁盘并计算SHA256，返回 (file_size, sha256_hash)"""
+    sha256_hash = hashlib.sha256()
+    total_size = 0
+    os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+    async with aiofiles.open(storage_path, "wb") as f:
+        while True:
+            chunk = await upload_file.read(chunk_size)
+            if not chunk:
+                break
+            sha256_hash.update(chunk)
+            await f.write(chunk)
+            total_size += len(chunk)
+    return total_size, sha256_hash.hexdigest()
 
 
 async def log_audit(
@@ -124,7 +140,20 @@ async def get_folder_tree(
     folders = result.scalars().all()
 
     # 构建树形结构
-    folder_map = {f.id: FolderTree.model_validate(f) for f in folders}
+    folder_map = {
+        f.id: FolderTree(
+            id=f.id,
+            name=f.name,
+            parent_id=f.parent_id,
+            space_id=f.space_id,
+            path=f.path,
+            owner_id=f.owner_id,
+            is_deleted=f.is_deleted,
+            created_at=f.created_at,
+            updated_at=f.updated_at,
+        )
+        for f in folders
+    }
     root_folders = []
 
     for folder in folders:
@@ -400,7 +429,7 @@ async def list_files(
 @router.post("/upload", response_model=FileResponse)
 async def upload_file(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = FastAPIFile(...),
     folder_id: Optional[int] = Query(None),
     space_id: Optional[int] = Query(None),
     category_id: Optional[int] = Query(None),
@@ -410,7 +439,6 @@ async def upload_file(
     db: AsyncSession = Depends(get_db),
 ):
     """上传文件"""
-    # 检查文件扩展名
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in settings.allowed_extensions_list:
         raise HTTPException(
@@ -418,29 +446,7 @@ async def upload_file(
             detail=f"不支持的文件类型: {ext}",
         )
 
-    # 安全处理文件名
     origin_name = os.path.basename(file.filename)
-
-    # 检查文件大小 (MAX_UPLOAD_SIZE为0表示无限制)
-    content = await file.read()
-    if settings.MAX_UPLOAD_SIZE > 0 and len(content) > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"文件大小超过限制 ({settings.MAX_UPLOAD_SIZE // 1024 // 1024}MB)",
-        )
-
-    user_total = await db.execute(
-        select(func.coalesce(func.sum(FileModel.size), 0)).where(
-            FileModel.owner_id == current_user.id,
-            FileModel.is_deleted == False
-        )
-    )
-    user_used = user_total.scalar() or 0
-    if user_used + len(content) > current_user.storage_quota:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"存储空间不足，已使用 {user_used // 1024 // 1024 // 1024}GB / {current_user.storage_quota // 1024 // 1024 // 1024}GB",
-        )
 
     # 确定空间和存储路径
     folder_path = ""
@@ -528,17 +534,14 @@ async def upload_file(
 
     if existing_file:
         if overwrite:
-            # 保存当前版本到版本历史
+            import shutil
             version_dir = os.path.join(os.path.dirname(existing_file.storage_path), "versions")
             os.makedirs(version_dir, exist_ok=True)
             old_version_path = os.path.join(version_dir, f"{existing_file.id}_v{existing_file.version_no}")
 
-            # 复制旧文件到版本目录
             if os.path.exists(existing_file.storage_path):
-                import shutil
                 shutil.copy2(existing_file.storage_path, old_version_path)
 
-                # 创建版本记录
                 old_version = FileVersion(
                     file_id=existing_file.id,
                     version_no=existing_file.version_no,
@@ -549,18 +552,12 @@ async def upload_file(
                 )
                 db.add(old_version)
 
-            # 覆盖已有文件
-            existing_file.size = len(content)
+            storage_path = existing_file.storage_path
+            file_size, file_hash = await stream_file_to_disk(file, storage_path)
+
+            existing_file.size = file_size
             existing_file.updated_at = get_beijing_time()
             existing_file.version_no += 1
-
-            # 写入文件
-            storage_path = existing_file.storage_path
-            async with aiofiles.open(storage_path, "wb") as f:
-                await f.write(content)
-
-            # 计算哈希
-            file_hash = get_file_hash(storage_path)
             existing_file.hash_sha256 = file_hash
 
             await db.commit()
@@ -568,12 +565,11 @@ async def upload_file(
 
             await log_audit(
                 db, current_user, "file_upload_overwrite", "file", existing_file.id, existing_file.origin_name, request,
-                detail={"size": len(content), "ext": ext, "version": existing_file.version_no}
+                detail={"size": file_size, "ext": ext, "version": existing_file.version_no}
             )
 
             return FileResponse.model_validate(existing_file)
         else:
-            # 自动重命名
             base_name = origin_name.rsplit(".", 1)[0] if "." in origin_name else origin_name
             counter = 1
             while True:
@@ -592,25 +588,11 @@ async def upload_file(
                     break
                 counter += 1
 
-    # 生成存储文件名
     stored_name = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
     storage_path = os.path.join(settings.STORAGE_PATH, folder_path, stored_name) if folder_path else os.path.join(settings.STORAGE_PATH, stored_name)
 
-    # 确保目录存在
-    storage_dir = os.path.dirname(storage_path)
-    if storage_dir:
-        os.makedirs(storage_dir, exist_ok=True)
-    else:
-        os.makedirs(settings.STORAGE_PATH, exist_ok=True)
+    file_size, file_hash = await stream_file_to_disk(file, storage_path)
 
-    # 写入文件
-    async with aiofiles.open(storage_path, "wb") as f:
-        await f.write(content)
-
-    # 计算哈希
-    file_hash = get_file_hash(storage_path)
-
-    # 保存到数据库
     file_record = FileModel(
         space_id=actual_space_id,
         folder_id=folder_id,
@@ -619,7 +601,7 @@ async def upload_file(
         storage_path=storage_path,
         ext=ext,
         mime_type=file.content_type,
-        size=len(content),
+        size=file_size,
         hash_sha256=file_hash,
         owner_id=current_user.id,
         remark=remark,
@@ -630,12 +612,11 @@ async def upload_file(
     await db.commit()
     await db.refresh(file_record)
 
-    # 创建初始版本记录
     version = FileVersion(
         file_id=file_record.id,
         version_no=1,
         storage_path=storage_path,
-        size=len(content),
+        size=file_size,
         hash_sha256=file_hash,
         created_by=current_user.id
     )
@@ -644,7 +625,7 @@ async def upload_file(
 
     await log_audit(
         db, current_user, "file_upload", "file", file_record.id, file_record.origin_name, request,
-        detail={"size": len(content), "ext": ext, "space_id": actual_space_id}
+        detail={"size": file_size, "ext": ext, "space_id": actual_space_id}
     )
 
     # 发送新文件通知（如果是群组空间）
@@ -684,6 +665,156 @@ async def upload_file(
     file_record = result.scalar_one()
 
     return FileResponse.model_validate(file_record)
+
+
+@router.post("/upload-folder")
+async def upload_folder(
+    request: Request,
+    files: List[UploadFile] = FastAPIFile(...),
+    paths: str = Form(...),
+    space_id: Optional[int] = Query(None),
+    current_user: User = Depends(require_permission("file:upload")),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传文件夹（批量上传，保持目录结构）"""
+    import json
+
+    path_list = json.loads(paths)
+
+    if len(files) != len(path_list):
+        raise HTTPException(status_code=400, detail="文件数量与路径数量不匹配")
+
+    actual_space_id = space_id
+    if not actual_space_id:
+        result = await db.execute(
+            select(Space).where(Space.space_type == "personal", Space.owner_id == current_user.id)
+        )
+        personal_space = result.scalar_one_or_none()
+        if personal_space:
+            actual_space_id = personal_space.id
+
+    if not actual_space_id:
+        raise HTTPException(status_code=400, detail="未指定空间且无个人空间")
+
+    root_folder_name = path_list[0].split("/")[0] if path_list else "新建文件夹"
+
+    existing_query = select(Folder).where(
+        Folder.name == root_folder_name,
+        Folder.is_deleted == False,
+        Folder.parent_id == None,
+        Folder.space_id == actual_space_id
+    )
+    existing_result = await db.execute(existing_query)
+    root_folder = existing_result.scalar_one_or_none()
+
+    if not root_folder:
+        root_folder = Folder(
+            space_id=actual_space_id,
+            name=root_folder_name,
+            parent_id=None,
+            owner_id=current_user.id,
+        )
+        db.add(root_folder)
+        await db.flush()
+        root_folder.path = f"/{root_folder.id}"
+        await db.flush()
+
+    folder_cache = {root_folder_name: root_folder}
+
+    uploaded_count = 0
+    errors = []
+
+    for i, (file, rel_path) in enumerate(zip(files, path_list)):
+        try:
+            parts = rel_path.split("/")
+            current_parent_id = root_folder.id
+
+            for j in range(1, len(parts) - 1):
+                folder_name = parts[j]
+                cache_key = "/".join(parts[:j + 1])
+
+                if cache_key in folder_cache:
+                    current_parent_id = folder_cache[cache_key].id
+                    continue
+
+                result = await db.execute(
+                    select(Folder).where(
+                        Folder.name == folder_name,
+                        Folder.parent_id == current_parent_id,
+                        Folder.is_deleted == False,
+                        Folder.space_id == actual_space_id
+                    )
+                )
+                sub_folder = result.scalar_one_or_none()
+
+                if not sub_folder:
+                    sub_folder = Folder(
+                        space_id=actual_space_id,
+                        name=folder_name,
+                        parent_id=current_parent_id,
+                        owner_id=current_user.id,
+                    )
+                    db.add(sub_folder)
+                    await db.flush()
+                    parent_folder = folder_cache.get("/".join(parts[:j]))
+                    sub_folder.path = f"{parent_folder.path}/{sub_folder.id}" if parent_folder else f"/{sub_folder.id}"
+                    await db.flush()
+
+                folder_cache[cache_key] = sub_folder
+                current_parent_id = sub_folder.id
+
+            content = await file.read()
+            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+
+            stored_name = f"{uuid.uuid4().hex}.{ext}" if ext else uuid.uuid4().hex
+            parent_folder_obj = folder_cache.get("/".join(parts[:-1]), root_folder)
+            folder_path = parent_folder_obj.path.strip("/") if parent_folder_obj else ""
+            storage_path = os.path.join(settings.STORAGE_PATH, folder_path, stored_name) if folder_path else os.path.join(settings.STORAGE_PATH, stored_name)
+
+            storage_dir = os.path.dirname(storage_path)
+            if storage_dir:
+                os.makedirs(storage_dir, exist_ok=True)
+            else:
+                os.makedirs(settings.STORAGE_PATH, exist_ok=True)
+
+            async with aiofiles.open(storage_path, "wb") as f:
+                await f.write(content)
+
+            file_hash = get_file_hash(storage_path)
+
+            file_record = FileModel(
+                space_id=actual_space_id,
+                folder_id=current_parent_id,
+                origin_name=file.filename,
+                stored_name=stored_name,
+                storage_path=storage_path,
+                ext=ext,
+                mime_type=file.content_type,
+                size=len(content),
+                hash_sha256=file_hash,
+                owner_id=current_user.id,
+                version_no=1,
+            )
+            db.add(file_record)
+            uploaded_count += 1
+
+        except Exception as e:
+            errors.append({"file": rel_path, "error": str(e)})
+
+    await db.commit()
+
+    await log_audit(
+        db, current_user, "folder_upload", "folder", root_folder.id, root_folder_name, request,
+        detail={"file_count": uploaded_count, "root_folder": root_folder_name}
+    )
+
+    return {
+        "message": f"成功上传 {uploaded_count} 个文件到文件夹 {root_folder_name}",
+        "folder_id": root_folder.id,
+        "folder_name": root_folder_name,
+        "uploaded_count": uploaded_count,
+        "errors": errors
+    }
 
 
 @router.put("/{file_id}/rename", response_model=FileResponse)
@@ -982,6 +1113,7 @@ async def preview_file(
         path=storage_path,
         media_type=mime_type,
         filename=file_record.origin_name,
+        content_disposition_type="inline",
     )
 
 

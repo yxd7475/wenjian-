@@ -11,6 +11,11 @@
           <el-icon><Upload /></el-icon>
           上传文件
         </el-button>
+        <el-button type="primary" plain @click="triggerFolderUpload">
+          <el-icon><FolderAdd /></el-icon>
+          上传文件夹
+        </el-button>
+        <input type="file" ref="folderInputRef" webkitdirectory directory multiple style="display: none" @change="handleFolderSelect" />
         <el-button @click="showFolderDialog = true">
           <el-icon><FolderAdd /></el-icon>
           新建文件夹
@@ -285,32 +290,27 @@
     </div>
 
     <!-- 上传对话框 -->
-    <el-dialog v-model="showUploadDialog" title="上传文件" width="600px">
-      <el-upload
-        ref="uploadRef"
-        :action="uploadUrl"
-        :headers="uploadHeaders"
-        :data="uploadData"
-        :on-success="handleUploadSuccess"
-        :on-error="handleUploadError"
-        :on-progress="handleUploadProgress"
-        :before-upload="beforeUpload"
-        multiple
-        drag
-        :auto-upload="false"
-      >
-        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
-        <template #tip>
-          <div class="el-upload__tip">支持常见文件格式</div>
-          <div v-if="uploadProgress > 0" class="upload-progress">
-            <el-progress :percentage="uploadProgress" :status="uploadStatus" />
-          </div>
-        </template>
-      </el-upload>
+    <el-dialog v-model="showUploadDialog" title="上传文件" width="600px" @close="clearUploadFiles">
+      <div class="upload-area" @click="triggerFileSelect" @dragover.prevent @drop.prevent="handleDrop">
+        <input type="file" ref="fileInputRef" multiple style="display: none" @change="handleFileInputChange" />
+        <el-icon class="el-icon--upload" :size="48"><UploadFilled /></el-icon>
+        <div class="el-upload__text">拖拽文件或文件夹到此处，或 <em>点击选择文件</em></div>
+      </div>
+      <div v-if="selectedUploadFiles.length > 0" class="selected-files">
+        <div v-for="(f, idx) in selectedUploadFiles" :key="idx" class="selected-file-item">
+          <span class="file-name">{{ f.name }}</span>
+          <span class="file-size">{{ formatSize(f.size) }}</span>
+          <el-button type="danger" text size="small" @click="removeUploadFile(idx)">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+      </div>
+      <div v-if="uploadProgress > 0" class="upload-progress">
+        <el-progress :percentage="uploadProgress" :status="uploadStatus" />
+      </div>
       <template #footer>
         <el-button @click="showUploadDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitUpload" :loading="uploading">
+        <el-button type="primary" @click="doUploadFiles" :loading="uploading" :disabled="selectedUploadFiles.length === 0">
           {{ uploading ? '上传中...' : '开始上传' }}
         </el-button>
       </template>
@@ -453,10 +453,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Folder, ArrowUp, ArrowDown, Share
+  Folder, ArrowUp, ArrowDown, Share, Close, UploadFilled, Upload, FolderAdd
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import api from '@/utils/api'
+import api, { getDirectApiUrl } from '@/utils/api'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import { buildFilePreviewUrl, getFileIcon, getFileIconColor, getFileIconBg, getFileIconBgFolder, isPreviewable } from '@/utils/file'
 
@@ -510,7 +510,6 @@ const moveCopyTarget = ref(null)
 const selectedTargetFolder = ref(null)
 
 // 上传相关
-const uploadRef = ref(null)
 const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref('')
@@ -555,18 +554,6 @@ const shareLink = computed(() => {
     baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
   }
   return `${baseUrl}/s/${shareResult.value.share_code}`
-})
-
-// 上传配置
-const uploadUrl = computed(() => '/api/files/upload')
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${localStorage.getItem('token')}`
-}))
-const uploadData = computed(() => {
-  const data = {}
-  if (currentFolderId.value) data.folder_id = currentFolderId.value
-  if (personalSpaceId.value) data.space_id = personalSpaceId.value
-  return data
 })
 
 // 计算属性
@@ -834,8 +821,313 @@ const createFolder = async () => {
 }
 
 const beforeUpload = (file) => {
-  // 本地系统不限制文件大小
   return true
+}
+
+const fileInputRef = ref(null)
+const selectedUploadFiles = ref([])
+
+const isDirectoryEntry = (file) => {
+  const name = (file.name || '').toLowerCase()
+  const ext = name.includes('.') ? name.split('.').pop() : ''
+  if (ext) return false
+  return file.size === 0 && !file.type
+}
+
+const traverseFileTree = (entry, path = '') => {
+  return new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file((file) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          resolve([{
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            data: reader.result,
+            _relativePath: path + file.name
+          }])
+        }
+        reader.onerror = () => resolve([])
+        reader.readAsArrayBuffer(file)
+      }, () => resolve([]))
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader()
+      const allEntries = []
+      const readBatch = () => {
+        dirReader.readEntries((entries) => {
+          if (entries.length === 0) {
+            Promise.all(allEntries.map(e => traverseFileTree(e, path + entry.name + '/')))
+              .then(results => resolve(results.flat()))
+          } else {
+            allEntries.push(...entries)
+            readBatch()
+          }
+        }, () => resolve([]))
+      }
+      readBatch()
+    } else {
+      resolve([])
+    }
+  })
+}
+
+const readFileToMemory = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (reader.error) {
+        reject(reader.error)
+        return
+      }
+      resolve({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        data: reader.result
+      })
+    }
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+const readFilesConcurrently = async (files, concurrency = 8) => {
+  const allResults = []
+  for (let i = 0; i < files.length; i += concurrency) {
+    const batch = files.slice(i, i + concurrency)
+    const batchResults = await Promise.allSettled(
+      batch.map(f => readFileToMemory(f).catch(() => null))
+    )
+    allResults.push(...batchResults)
+  }
+  return allResults
+}
+
+const triggerFileSelect = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileInputChange = (event) => {
+  const fileList = event.target.files
+  if (!fileList || fileList.length === 0) return
+
+  const entries = Array.from(fileList)
+  const fileEntries = entries.filter(f => !isDirectoryEntry(f))
+  const skippedDirs = entries.length - fileEntries.length
+
+  fileEntries.forEach(f => {
+    f._isRawFile = true
+    selectedUploadFiles.value.push(f)
+  })
+
+  if (skippedDirs > 0) {
+    ElMessage.info(`已跳过 ${skippedDirs} 个文件夹`)
+  }
+}
+
+const handleDrop = async (event) => {
+  const items = event.dataTransfer.items
+  if (items && items.length > 0) {
+    let hasFolder = false
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry?.()
+      if (entry && entry.isDirectory) {
+        hasFolder = true
+        break
+      }
+    }
+
+    if (hasFolder) {
+      const allFiles = []
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.()
+        if (!entry) continue
+        if (entry.isDirectory) {
+          const files = await traverseFileTree(entry)
+          allFiles.push(...files)
+        } else if (entry.isFile) {
+          const memFile = await new Promise(resolve => {
+            entry.file((file) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve({
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                data: reader.result,
+                _relativePath: file.name
+              })
+              reader.onerror = () => resolve(null)
+              reader.readAsArrayBuffer(file)
+            }, () => resolve(null))
+          })
+          if (memFile) {
+            allFiles.push(memFile)
+          }
+        }
+      }
+      if (allFiles.length > 0) {
+        await uploadDroppedFolder(allFiles)
+      } else {
+        ElMessage.warning('文件夹中没有可上传的文件')
+      }
+      return
+    }
+  }
+
+  const files = event.dataTransfer.files
+  if (files && files.length > 0) {
+    const entries = Array.from(files)
+    const fileEntries = entries.filter(f => !isDirectoryEntry(f))
+    const skippedDirs = entries.length - fileEntries.length
+
+    fileEntries.forEach(f => {
+      f._isRawFile = true
+      selectedUploadFiles.value.push(f)
+    })
+
+    if (skippedDirs > 0) {
+      ElMessage.info(`已跳过 ${skippedDirs} 个文件夹`)
+    }
+  }
+}
+
+const uploadDroppedFolder = async (fileList) => {
+  folderUploading.value = true
+
+  try {
+    const formData = new FormData()
+    const pathList = []
+    let readErrors = 0
+
+    for (const memFile of fileList) {
+      const relativePath = memFile._relativePath || memFile.webkitRelativePath || memFile.name
+      if (!memFile.data) {
+        readErrors++
+        continue
+      }
+      try {
+        const blob = new Blob([memFile.data], { type: memFile.type || 'application/octet-stream' })
+        formData.append('files', blob, memFile.name)
+        pathList.push(relativePath)
+      } catch (err) {
+        readErrors++
+      }
+    }
+
+    if (pathList.length === 0) {
+      ElMessage.warning('文件夹中没有可上传的文件')
+      folderUploading.value = false
+      return
+    }
+
+    const skipInfo = readErrors > 0 ? `（已跳过 ${readErrors} 个不可读取项）` : ''
+    const uploadMsg = ElMessage({
+      message: `正在上传 ${pathList.length} 个文件${skipInfo}...`,
+      type: 'info',
+      duration: 0
+    })
+
+    formData.append('paths', JSON.stringify(pathList))
+
+    const params = new URLSearchParams()
+    if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
+
+    const token = localStorage.getItem('token')
+    const response = await fetch(getDirectApiUrl(`/api/files/upload-folder?${params.toString()}`), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    })
+
+    uploadMsg.close()
+    const result = await response.json()
+    ElMessage.success(result.message || `成功上传 ${result.uploaded_count} 个文件`)
+    loadFiles()
+  } catch (error) {
+    console.error('文件夹上传失败:', error)
+    ElMessage.error('文件夹上传失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    folderUploading.value = false
+  }
+}
+
+const removeUploadFile = (idx) => {
+  selectedUploadFiles.value.splice(idx, 1)
+}
+
+const clearUploadFiles = () => {
+  selectedUploadFiles.value = []
+  uploadProgress.value = 0
+  uploadStatus.value = ''
+  if (fileInputRef.value) fileInputRef.value.value = ''
+}
+
+const doUploadFiles = async () => {
+  if (selectedUploadFiles.value.length === 0) return
+  uploading.value = true
+  uploadProgress.value = 0
+  uploadStatus.value = ''
+
+  const total = selectedUploadFiles.value.length
+  let completed = 0
+
+  for (const fileEntry of selectedUploadFiles.value) {
+    try {
+      const formData = new FormData()
+      if (fileEntry._isRawFile) {
+        formData.append('file', fileEntry, fileEntry.name)
+      } else {
+        const blob = new Blob([fileEntry.data], { type: fileEntry.type || 'application/octet-stream' })
+        formData.append('file', blob, fileEntry.name)
+      }
+
+      const params = new URLSearchParams()
+      if (currentFolderId.value) params.append('folder_id', currentFolderId.value)
+      if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
+
+      const token = localStorage.getItem('token')
+      const url = getDirectApiUrl(`/api/files/upload?${params.toString()}`)
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', url, true)
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const currentPct = e.loaded / e.total
+            uploadProgress.value = Math.round(((completed + currentPct) / total) * 100)
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+          } else {
+            let detail = `上传失败: ${xhr.status}`
+            try { const d = JSON.parse(xhr.responseText); if (d.detail) detail = d.detail } catch (_) {}
+            reject(new Error(detail))
+          }
+        }
+        xhr.onerror = () => reject(new Error('网络错误'))
+        xhr.ontimeout = () => reject(new Error('上传超时'))
+        xhr.send(formData)
+      })
+
+      completed++
+      uploadProgress.value = Math.round((completed / total) * 100)
+    } catch (error) {
+      console.error('上传文件失败:', fileEntry.name, error)
+    }
+  }
+
+  uploading.value = false
+  uploadStatus.value = 'success'
+  ElMessage.success(`成功上传 ${completed}/${total} 个文件`)
+  showUploadDialog.value = false
+  if (fileInputRef.value) fileInputRef.value.value = ''
+  selectedUploadFiles.value = []
+  loadFiles()
 }
 
 const handleUploadProgress = (event) => {
@@ -844,10 +1136,7 @@ const handleUploadProgress = (event) => {
 }
 
 const submitUpload = () => {
-  uploading.value = true
-  uploadProgress.value = 0
-  uploadStatus.value = ''
-  uploadRef.value.submit()
+  doUploadFiles()
 }
 
 const handleUploadSuccess = () => {
@@ -856,6 +1145,7 @@ const handleUploadSuccess = () => {
   uploadStatus.value = 'success'
   ElMessage.success('上传成功')
   showUploadDialog.value = false
+  pendingFiles.value = []
   loadFiles()
 }
 
@@ -863,6 +1153,81 @@ const handleUploadError = () => {
   uploading.value = false
   uploadStatus.value = 'exception'
   ElMessage.error('上传失败')
+}
+
+const folderInputRef = ref(null)
+const folderUploading = ref(false)
+
+const triggerFolderUpload = () => {
+  folderInputRef.value?.click()
+}
+
+const handleFolderSelect = async (event) => {
+  const fileList = event.target.files
+  if (!fileList || fileList.length === 0) return
+
+  folderUploading.value = true
+
+  try {
+    const entries = Array.from(fileList)
+    const fileEntries = entries.filter(f => !isDirectoryEntry(f))
+    const skippedDirs = entries.length - fileEntries.length
+    const filePaths = fileEntries.map(f => f.webkitRelativePath || f.name)
+
+    const results = await readFilesConcurrently(fileEntries)
+
+    const formData = new FormData()
+    const pathList = []
+    let readErrors = 0
+
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled' && r.value) {
+        const blob = new Blob([r.value.data], { type: r.value.type || 'application/octet-stream' })
+        formData.append('files', blob, r.value.name)
+        pathList.push(filePaths[idx])
+      } else {
+        readErrors++
+      }
+    })
+
+    if (pathList.length === 0) {
+      ElMessage.warning('文件夹中没有可上传的文件')
+      folderUploading.value = false
+      return
+    }
+
+    const skipInfo = (skippedDirs + readErrors) > 0 ? `（已跳过 ${skippedDirs + readErrors} 个不可读取项）` : ''
+    const uploadMsg = ElMessage({
+      message: `正在上传 ${pathList.length} 个文件${skipInfo}...`,
+      type: 'info',
+      duration: 0
+    })
+
+    formData.append('paths', JSON.stringify(pathList))
+
+    const params = new URLSearchParams()
+    if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
+
+    const token = localStorage.getItem('token')
+    const response = await fetch(getDirectApiUrl(`/api/files/upload-folder?${params.toString()}`), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    })
+
+    uploadMsg.close()
+    const result = await response.json()
+    ElMessage.success(result.message || `成功上传 ${result.uploaded_count} 个文件`)
+    loadFiles()
+  } catch (error) {
+    console.error('文件夹上传失败:', error)
+    ElMessage.error('文件夹上传失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    folderUploading.value = false
+    if (folderInputRef.value) folderInputRef.value.value = ''
+  }
 }
 
 const downloadFile = async (file) => {
@@ -1282,6 +1647,65 @@ onUnmounted(() => {
 
 .upload-progress {
   margin-top: 12px;
+}
+
+.upload-area {
+  border: 2px dashed #d9e1ec;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafbfe;
+}
+
+.upload-area:hover {
+  border-color: #5b9aff;
+  background: #f0f6ff;
+}
+
+.upload-area .el-icon--upload {
+  color: #5b9aff;
+  margin-bottom: 8px;
+}
+
+.upload-area .el-upload__text {
+  color: #8c939d;
+  font-size: 14px;
+}
+
+.upload-area .el-upload__text em {
+  color: #5b9aff;
+  font-style: normal;
+}
+
+.selected-files {
+  margin-top: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.selected-file-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #f5f7fa;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.selected-file-item .file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-item .file-size {
+  color: #909399;
+  margin: 0 8px;
+  font-size: 12px;
 }
 
 :deep(.el-breadcrumb) {

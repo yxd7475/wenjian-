@@ -148,7 +148,7 @@ async def get_public_space(
             Folder.is_deleted == False
         )
     )
-    root_folder = result.scalar_one_or_none()
+    root_folder = result.scalars().first()
 
     # 统计文件数量和大小
     result = await db.execute(
@@ -202,7 +202,7 @@ async def get_space(
             Folder.is_deleted == False
         )
     )
-    root_folder = result.scalar_one_or_none()
+    root_folder = result.scalars().first()
 
     # 统计文件数量和大小
     from app.models.models import File
@@ -307,7 +307,7 @@ async def get_or_create_root_folder(
             Folder.is_deleted == False
         )
     )
-    root_folder = result.scalar_one_or_none()
+    root_folder = result.scalars().first()
 
     if not root_folder:
         # 创建根文件夹

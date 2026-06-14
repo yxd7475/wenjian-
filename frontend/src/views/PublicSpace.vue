@@ -109,23 +109,15 @@
     />
 
     <!-- 上传对话框 -->
-    <el-dialog v-model="showUploadDialog" title="上传文件到公共空间" width="500px">
+    <el-dialog v-model="showUploadDialog" title="上传文件到公共空间" width="500px" @close="handleUploadDialogClose">
       <el-form :model="uploadForm" label-width="100px">
         <el-form-item label="选择文件">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :limit="1"
-            :on-change="handleFileChange"
-            :on-exceed="handleExceed"
-          >
-            <el-button type="primary">选择文件</el-button>
-            <template #tip>
-              <div class="el-upload__tip" v-if="uploadForm.file">
-                已选择: {{ uploadForm.file.name }}
-              </div>
-            </template>
-          </el-upload>
+          <div class="upload-area" @click="triggerFileSelect" @dragover.prevent @drop.prevent="handleDrop">
+            <input type="file" ref="fileInputRef" style="display: none" @change="handleFileInputChange" />
+            <el-icon class="el-icon--upload" :size="32"><UploadFilled /></el-icon>
+            <div class="upload-area-text" v-if="!uploadForm.file">点击选择文件或拖拽到此处</div>
+            <div class="upload-area-text" v-else>已选择: {{ uploadForm.file.name }}</div>
+          </div>
         </el-form-item>
         <el-form-item label="文件分类">
           <el-select v-model="uploadForm.category_id" placeholder="选择分类" style="width: 100%">
@@ -215,9 +207,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import api from '@/utils/api'
+import api, { getDirectApiUrl } from '@/utils/api'
 import FilePreviewDialog from '@/components/FilePreviewDialog.vue'
 import { buildFilePreviewUrl, getFileIcon, getFileIconColor, getFileIconBg, isPreviewable } from '@/utils/file'
 
@@ -235,7 +227,7 @@ const selectedCategory = ref(null)
 
 // 上传相关
 const showUploadDialog = ref(false)
-const uploadRef = ref(null)
+const fileInputRef = ref(null)
 const uploadForm = ref({
   file: null,
   category_id: null
@@ -381,12 +373,69 @@ const downloadPreviewFile = () => {
   }
 }
 
-const handleFileChange = (file) => {
-  uploadForm.value.file = file.raw
+const isDirectoryEntry = (file) => {
+  if (file.size === 0 && !file.type) return true
+  if (file.size === 0 && file.type === '') return true
+  return false
 }
 
-const handleExceed = () => {
-  ElMessage.warning('一次只能上传一个文件')
+const readFileToMemory = async (file) => {
+  try {
+    const data = await file.arrayBuffer()
+    return {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      data: data
+    }
+  } catch (err) {
+    throw new Error(`SKIP:${file.name}`)
+  }
+}
+
+const triggerFileSelect = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileInputChange = async (event) => {
+  const files = event.target.files
+  if (files && files.length > 0) {
+    const file = files[0]
+    if (isDirectoryEntry(file)) {
+      ElMessage.warning('请选择文件，不能选择文件夹')
+      return
+    }
+    try {
+      const memFile = await readFileToMemory(file)
+      uploadForm.value.file = memFile
+    } catch (err) {
+      console.warn('读取文件失败:', file.name, err)
+      ElMessage.error('无法读取文件: ' + (err.message || err))
+    }
+  }
+}
+
+const handleDrop = async (event) => {
+  const files = event.dataTransfer.files
+  if (files && files.length > 0) {
+    const file = files[0]
+    if (isDirectoryEntry(file)) {
+      ElMessage.warning('请选择文件，不能选择文件夹')
+      return
+    }
+    try {
+      const memFile = await readFileToMemory(file)
+      uploadForm.value.file = memFile
+    } catch (err) {
+      console.warn('读取文件失败:', file.name, err)
+      ElMessage.error('无法读取文件: ' + (err.message || err))
+    }
+  }
+}
+
+const handleUploadDialogClose = () => {
+  if (fileInputRef.value) fileInputRef.value.value = ''
+  uploadForm.value = { file: null, category_id: null }
 }
 
 const uploadFile = async () => {
@@ -402,20 +451,34 @@ const uploadFile = async () => {
 
   uploading.value = true
   try {
+    const file = uploadForm.value.file
+    const blob = new Blob([file.data], { type: file.type })
     const formData = new FormData()
-    formData.append('file', uploadForm.value.file)
+    formData.append('file', blob, file.name)
 
     const params = { space_id: publicSpaceId.value }
     if (uploadForm.value.category_id) {
       params.category_id = uploadForm.value.category_id
     }
 
-    await api.post(`/files/upload?space_id=${publicSpaceId.value}${uploadForm.value.category_id ? '&category_id=' + uploadForm.value.category_id : ''}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    const uploadUrl = getDirectApiUrl(`/api/files/upload?space_id=${publicSpaceId.value}${uploadForm.value.category_id ? '&category_id=' + uploadForm.value.category_id : ''}`)
+    const token = localStorage.getItem('token')
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
     })
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.detail || '上传失败')
+    }
 
     ElMessage.success('上传成功')
     showUploadDialog.value = false
+    if (fileInputRef.value) fileInputRef.value.value = ''
     uploadForm.value = { file: null, category_id: null }
     loadFiles()
   } catch (error) {
@@ -699,5 +762,30 @@ onMounted(() => {
     flex-wrap: wrap;
     justify-content: center;
   }
+}
+
+.upload-area {
+  border: 2px dashed #d9e1ec;
+  border-radius: 12px;
+  padding: 24px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafbfe;
+}
+
+.upload-area:hover {
+  border-color: #5b9aff;
+  background: #f0f6ff;
+}
+
+.upload-area .el-icon--upload {
+  color: #5b9aff;
+  margin-bottom: 4px;
+}
+
+.upload-area-text {
+  color: #8c939d;
+  font-size: 13px;
 }
 </style>

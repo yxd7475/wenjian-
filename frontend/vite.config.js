@@ -18,7 +18,14 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8088',
-        changeOrigin: true
+        changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Connection', 'keep-alive')
+          })
+        }
       },
       '/ws': {
         target: 'ws://localhost:8088',
