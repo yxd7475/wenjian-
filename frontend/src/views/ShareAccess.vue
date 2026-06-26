@@ -158,7 +158,7 @@ const previewUrl = computed(() => {
     params.set('password', password.value)
   }
   const query = params.toString()
-  return `/api/shares/${shareCode}/preview${query ? `?${query}` : ''}`
+  return `/files/api/shares/${shareCode}/preview${query ? `?${query}` : ''}`
 })
 
 const loadShareInfo = async () => {
@@ -226,7 +226,7 @@ const downloadFile = async () => {
   downloadSpeed.value = ''
 
   try {
-    const response = await fetch(`/api/shares/${shareCode}/download`, {
+    const response = await fetch(`/files/api/shares/${shareCode}/download`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

@@ -329,7 +329,7 @@ const loadStorageStats = async () => {
 
 const downloadFile = async (file) => {
   try {
-    const response = await fetch(`/api/files/${file.id}/download`, {
+    const response = await fetch(`/files/api/files/${file.id}/download`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     const blob = await response.blob()

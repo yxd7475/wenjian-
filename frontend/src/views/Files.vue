@@ -85,7 +85,7 @@
             <el-icon><Grid /></el-icon>
           </el-button>
         </el-button-group>
-        <el-button @click="showTrashDialog = true">
+        <el-button @click="$router.push('/trash')">
           <el-icon><Delete /></el-icon>
           回收站
         </el-button>
@@ -365,31 +365,6 @@
       @download="downloadPreviewFile"
     />
 
-    <!-- 回收站对话框 -->
-    <el-dialog v-model="showTrashDialog" title="回收站" width="900px">
-      <el-table :data="trashFiles" v-loading="trashLoading">
-        <el-table-column label="名称" prop="origin_name" min-width="200" />
-        <el-table-column label="大小" width="100">
-          <template #default="{ row }">{{ row.size ? formatSize(row.size) : '-' }}</template>
-        </el-table-column>
-        <el-table-column label="删除时间" width="160">
-          <template #default="{ row }">{{ formatDate(row.updated_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
-          <template #default="{ row }">
-            <el-button-group>
-              <el-button size="small" type="primary" @click="restoreFile(row)">恢复</el-button>
-              <el-button size="small" type="danger" @click="permanentDelete(row)" v-if="userStore.isAdmin">彻底删除</el-button>
-            </el-button-group>
-          </template>
-        </el-table-column>
-      </el-table>
-      <template #footer>
-        <el-button v-if="userStore.isAdmin" type="danger" @click="emptyTrash">清空回收站</el-button>
-        <el-button @click="showTrashDialog = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
     <!-- 分享对话框 -->
     <el-dialog v-model="showShareDialog" title="分享文件" width="500px">
       <el-form :model="shareForm" label-width="100px">
@@ -549,11 +524,7 @@ const fetchServerIp = async () => {
 
 const shareLink = computed(() => {
   if (!shareResult.value) return ''
-  let baseUrl = window.location.origin
-  if (serverIp.value) {
-    baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
-  }
-  return `${baseUrl}/s/${shareResult.value.share_code}`
+  return `${window.location.origin}/files/s/${shareResult.value.share_code}`
 })
 
 // 计算属性
@@ -1033,7 +1004,7 @@ const uploadDroppedFolder = async (fileList) => {
     if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
 
     const token = localStorage.getItem('token')
-    const response = await fetch(getDirectApiUrl(`/api/files/upload-folder?${params.toString()}`), {
+    const response = await fetch(getDirectApiUrl(`/files/api/files/upload-folder?${params.toString()}`), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -1088,7 +1059,7 @@ const doUploadFiles = async () => {
       if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
 
       const token = localStorage.getItem('token')
-      const url = getDirectApiUrl(`/api/files/upload?${params.toString()}`)
+      const url = getDirectApiUrl(`/files/api/files/upload?${params.toString()}`)
 
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
@@ -1209,7 +1180,7 @@ const handleFolderSelect = async (event) => {
     if (personalSpaceId.value) params.append('space_id', personalSpaceId.value)
 
     const token = localStorage.getItem('token')
-    const response = await fetch(getDirectApiUrl(`/api/files/upload-folder?${params.toString()}`), {
+    const response = await fetch(getDirectApiUrl(`/files/api/files/upload-folder?${params.toString()}`), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -1232,7 +1203,7 @@ const handleFolderSelect = async (event) => {
 
 const downloadFile = async (file) => {
   try {
-    const response = await fetch(`/api/files/${file.id}/download`, {
+    const response = await fetch(`/files/api/files/${file.id}/download`, {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
     })
     if (!response.ok) throw new Error('下载失败')
@@ -1252,7 +1223,7 @@ const batchDownload = async () => {
   const fileIds = selectedItems.value.filter(item => !item.is_folder).map(item => item.id)
   if (!fileIds.length) return ElMessage.warning('请选择要下载的文件')
   try {
-    const response = await fetch('/api/files/batch-download', {
+    const response = await fetch('/files/api/files/batch-download', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,

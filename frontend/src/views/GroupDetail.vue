@@ -520,7 +520,7 @@ const shouldShowTime = (msg) => {
 const getFileUrl = (fileId) => {
   if (!fileId) return ''
   const token = localStorage.getItem('token')
-  return `/api/files/${fileId}/download?token=${token}`
+  return `/files/api/files/${fileId}/download?token=${token}`
 }
 
 const normalizeMessageFile = (msg) => ({
@@ -656,7 +656,7 @@ const uploadAndSendFile = async (file, type) => {
 const downloadFile = async (msg) => {
   if (!msg.file_id) return
   const token = localStorage.getItem('token')
-  window.open(`/api/files/${msg.file_id}/download?token=${token}`, '_blank')
+  window.open(`/files/api/files/${msg.file_id}/download?token=${token}`, '_blank')
 }
 
 const handleFileMessageClick = (msg) => {

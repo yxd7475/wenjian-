@@ -323,7 +323,7 @@ const downloadLogs = async () => {
     // 获取token
     const token = localStorage.getItem('token')
 
-    const response = await fetch(`/api/audit-logs/export?${params.toString()}`, {
+    const response = await fetch(`/files/api/audit-logs/export?${params.toString()}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

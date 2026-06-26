@@ -38,10 +38,6 @@ const routes = [
     children: [
       {
         path: '',
-        redirect: '/files'
-      },
-      {
-        path: 'files',
         name: 'Files',
         component: () => import('@/views/Files.vue'),
         meta: { title: '文件管理' }
@@ -167,13 +163,19 @@ const routes = [
         name: 'Chat',
         component: () => import('@/views/Chat.vue'),
         meta: { title: '消息' }
+      },
+      {
+        path: 'trash',
+        name: 'Trash',
+        component: () => import('@/views/Trash.vue'),
+        meta: { title: '回收站' }
       }
     ]
   }
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/files/'),
   routes
 })
 
@@ -182,11 +184,11 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
 
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next('/login')
+    next({ name: 'Login' })
   } else if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    next('/files')
-  } else if (to.path === '/login' && userStore.isLoggedIn) {
-    next('/files')
+    next({ name: 'Files' })
+  } else if (to.name === 'Login' && userStore.isLoggedIn) {
+    next({ name: 'Files' })
   } else {
     next()
   }

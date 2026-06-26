@@ -252,8 +252,7 @@ const previewUrl = ref('')
 
 const shareLink = computed(() => {
   if (!shareResult.value) return ''
-  let baseUrl = window.location.origin
-  return `${baseUrl}/s/${shareResult.value.share_code}`
+  return `${window.location.origin}/files/s/${shareResult.value.share_code}`
 })
 
 const goBack = () => {
@@ -364,7 +363,7 @@ const fetchPreviewText = async () => {
 
 const downloadFile = (file) => {
   const token = localStorage.getItem('token')
-  window.open(`/api/files/${file.id}/download?token=${token}`, '_blank')
+  window.open(`/files/api/files/${file.id}/download?token=${token}`, '_blank')
 }
 
 const downloadPreviewFile = () => {
@@ -461,7 +460,7 @@ const uploadFile = async () => {
       params.category_id = uploadForm.value.category_id
     }
 
-    const uploadUrl = getDirectApiUrl(`/api/files/upload?space_id=${publicSpaceId.value}${uploadForm.value.category_id ? '&category_id=' + uploadForm.value.category_id : ''}`)
+    const uploadUrl = getDirectApiUrl(`/files/api/files/upload?space_id=${publicSpaceId.value}${uploadForm.value.category_id ? '&category_id=' + uploadForm.value.category_id : ''}`)
     const token = localStorage.getItem('token')
     const response = await fetch(uploadUrl, {
       method: 'POST',

@@ -328,7 +328,7 @@ const getAvatarText = (msg) => {
 const getFileUrl = (fileId) => {
   if (!fileId) return ''
   const token = localStorage.getItem('token')
-  return `/api/files/${fileId}/download?token=${token}`
+  return `/files/api/files/${fileId}/download?token=${token}`
 }
 
 const normalizeMessageFile = (msg) => ({
@@ -533,7 +533,7 @@ const uploadChatFile = async (file) => {
 const downloadFile = (msg) => {
   if (!msg.file_id) return
   const token = localStorage.getItem('token')
-  window.open(`/api/files/${msg.file_id}/download?token=${token}`, '_blank')
+  window.open(`/files/api/files/${msg.file_id}/download?token=${token}`, '_blank')
 }
 
 const handleFileMessageClick = (msg) => {

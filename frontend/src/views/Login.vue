@@ -5,7 +5,7 @@
         <div class="logo-icon">
           <el-icon :size="48"><FolderOpened /></el-icon>
         </div>
-        <h2 class="login-title">局域网文件共享系统</h2>
+        <h2 class="login-title">文件共享系统</h2>
         <p class="login-subtitle">安全 · 高效 · 便捷</p>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" @submit.prevent="handleLogin">
@@ -41,7 +41,7 @@
       </el-form>
       <div class="login-footer">
         <span style="color: #909399">还没有账号？</span>
-        <router-link to="/register" style="color: #409EFF; text-decoration: none">立即注册</router-link>
+        <router-link :to="{ name: 'Register' }" style="color: #409EFF; text-decoration: none">立即注册</router-link>
       </div>
     </div>
   </div>
@@ -75,7 +75,7 @@ const handleLogin = async () => {
     loading.value = true
     await userStore.login(form.username, form.password)
     ElMessage.success('登录成功')
-    router.push('/files')
+    router.push({ name: 'Files' })
   } catch (error) {
     console.error('登录失败:', error)
   } finally {

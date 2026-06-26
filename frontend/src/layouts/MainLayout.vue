@@ -79,6 +79,10 @@
             <span>消息</span>
             <el-badge v-if="chatStore.unreadCount > 0" :value="chatStore.unreadCount" class="badge-item" />
           </el-menu-item>
+          <el-menu-item index="/trash">
+            <el-icon><Delete /></el-icon>
+            <span>回收站</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <!-- 公共空间 -->

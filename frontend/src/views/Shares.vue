@@ -131,15 +131,11 @@ const previewUrl = computed(() => {
     params.set('password', currentPreviewShare.value.password)
   }
   const query = params.toString()
-  return `/api/shares/${currentPreviewShare.value.share_code}/preview${query ? `?${query}` : ''}`
+  return `/files/api/shares/${currentPreviewShare.value.share_code}/preview${query ? `?${query}` : ''}`
 })
 
 const getShareLink = (share) => {
-  let baseUrl = window.location.origin
-  if (serverIp.value) {
-    baseUrl = `${window.location.protocol}//${serverIp.value}:${window.location.port}`
-  }
-  return `${baseUrl}/s/${share.share_code}`
+  return `${window.location.origin}/files/s/${share.share_code}`
 }
 
 const getShareStatus = (share) => {
@@ -255,7 +251,7 @@ const downloadPreviewFile = async () => {
   const share = currentPreviewShare.value
   if (!share) return
   try {
-    const response = await fetch(`/api/shares/${share.share_code}/download`, {
+    const response = await fetch(`/files/api/shares/${share.share_code}/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: share.password || null })

@@ -2,11 +2,47 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/utils/api'
 
-export const useUserStore = defineStore('user', () => {
-  const token = ref(localStorage.getItem('token') || '')
-  const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+// 检查token是否过期
+function isTokenExpired(token) {
+  if (!token) return true
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (!payload.exp) return false
+    // exp是秒级时间戳，比较当前时间
+    return Date.now() >= payload.exp * 1000
+  } catch {
+    return true
+  }
+}
 
-  const isLoggedIn = computed(() => !!token.value)
+// 初始化时检查token有效性
+function getValidToken() {
+  const token = localStorage.getItem('token') || ''
+  if (token && isTokenExpired(token)) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    return ''
+  }
+  return token
+}
+
+function getValidUser() {
+  const token = localStorage.getItem('token') || ''
+  if (token && isTokenExpired(token)) {
+    return null
+  }
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    return null
+  }
+}
+
+export const useUserStore = defineStore('user', () => {
+  const token = ref(getValidToken())
+  const user = ref(getValidUser())
+
+  const isLoggedIn = computed(() => !!token.value && !isTokenExpired(token.value))
   const isAdmin = computed(() => {
     if (!user.value) return false
     if (user.value.is_superuser) return true

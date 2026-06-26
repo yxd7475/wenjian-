@@ -3,15 +3,34 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/files/api',
   timeout: 30000
 })
+
+// 检查token是否过期
+function isTokenExpired(token) {
+  if (!token) return true
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (!payload.exp) return false
+    return Date.now() >= payload.exp * 1000
+  } catch {
+    return true
+  }
+}
 
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
     if (token) {
+      if (isTokenExpired(token)) {
+        // token已过期，清除并跳转登录
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        router.push({ name: 'Login' })
+        return Promise.reject(new Error('登录已过期，请重新登录'))
+      }
       config.headers.Authorization = `Bearer ${token}`
     }
     return config
@@ -33,7 +52,7 @@ api.interceptors.response.use(
     if (status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      router.push('/login')
+      router.push({ name: 'Login' })
       ElMessage.error('登录已过期，请重新登录')
     } else if (status === 403) {
       ElMessage.error('没有权限执行此操作')
@@ -50,6 +69,5 @@ api.interceptors.response.use(
 export default api
 
 export function getDirectApiUrl(path) {
-  const host = window.location.hostname
-  return `http://${host}:8088${path}`
+  return path
 }

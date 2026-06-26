@@ -225,7 +225,7 @@ const confirmRestore = async () => {
 
 const downloadBackup = async (backup) => {
   const token = localStorage.getItem('token')
-  window.open(`/api/backup/download/${backup.id}?token=${token}`, '_blank')
+  window.open(`/files/api/backup/download/${backup.id}?token=${token}`, '_blank')
 }
 
 const deleteBackup = async (backup) => {

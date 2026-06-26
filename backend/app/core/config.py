@@ -1,5 +1,5 @@
 """
-局域网文件共享系统 - 核心配置
+文件共享系统 - 核心配置
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -12,7 +12,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 class Settings(BaseSettings):
     # 应用配置
-    APP_NAME: str = "局域网文件共享系统"
+    APP_NAME: str = "文件共享系统"
     APP_ENV: str = "development"
     DEBUG: bool = True
     SECRET_KEY: str = "your-secret-key-change-in-production-please"

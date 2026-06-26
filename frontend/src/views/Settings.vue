@@ -42,7 +42,7 @@
 
         <el-tab-pane label="关于" name="about">
           <el-descriptions :column="1" border style="max-width: 500px">
-            <el-descriptions-item label="系统名称">局域网文件共享系统</el-descriptions-item>
+            <el-descriptions-item label="系统名称">文件共享系统</el-descriptions-item>
             <el-descriptions-item label="版本">1.0.0</el-descriptions-item>
             <el-descriptions-item label="技术栈">Vue 3 + Element Plus + FastAPI</el-descriptions-item>
             <el-descriptions-item label="功能特性">文件上传/下载、文件夹管理、权限控制、审计日志</el-descriptions-item>

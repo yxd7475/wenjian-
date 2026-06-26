@@ -125,6 +125,12 @@ class NotificationService {
       return
     }
 
+    // 如果已有连接，先关闭
+    if (this.ws) {
+      this.ws.close()
+      this.ws = null
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     const wsUrl = `${protocol}//${host}/ws/${token}`
@@ -133,7 +139,6 @@ class NotificationService {
       this.ws = new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
-        console.log('WebSocket 已连接')
         this.reconnectAttempts = 0
         // 启动心跳
         this.startHeartbeat()
@@ -149,13 +154,16 @@ class NotificationService {
       }
 
       this.ws.onclose = () => {
-        console.log('WebSocket 已断开')
         this.stopHeartbeat()
-        this.attemptReconnect(token)
+        // 只在用户已登录时尝试重连
+        if (localStorage.getItem('token')) {
+          this.attemptReconnect(token)
+        }
       }
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket 错误:', error)
+        // WebSocket 错误时静默处理，不输出到控制台
+        // 因为浏览器的 WebSocket 错误信息通常没有用
       }
     } catch (error) {
       console.error('WebSocket 连接失败:', error)
@@ -183,17 +191,23 @@ class NotificationService {
    */
   attemptReconnect(token) {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('达到最大重连次数，停止重连')
+      // 达到最大重连次数后，重置计数器，等待更长时间后重试
+      this.reconnectAttempts = 0
+      this.reconnectTimer = setTimeout(() => {
+        if (localStorage.getItem('token')) {
+          this.connect(token)
+        }
+      }, 60000) // 60秒后重试
       return
     }
 
     this.reconnectAttempts++
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
 
-    console.log(`${delay / 1000}秒后尝试第 ${this.reconnectAttempts} 次重连`)
-
     this.reconnectTimer = setTimeout(() => {
-      this.connect(token)
+      if (localStorage.getItem('token')) {
+        this.connect(token)
+      }
     }, delay)
   }
 

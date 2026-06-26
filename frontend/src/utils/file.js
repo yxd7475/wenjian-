@@ -115,9 +115,9 @@ export function isOfficeDocument(input) {
 }
 
 export function buildFilePreviewUrl(fileId, token = localStorage.getItem('token')) {
-  return `/api/files/${fileId}/preview?token=${encodeURIComponent(token || '')}`
+  return `/files/api/files/${fileId}/preview?token=${encodeURIComponent(token || '')}`
 }
 
 export function buildFileDownloadUrl(fileId, token = localStorage.getItem('token')) {
-  return `/api/files/${fileId}/download?token=${encodeURIComponent(token || '')}`
+  return `/files/api/files/${fileId}/download?token=${encodeURIComponent(token || '')}`
 }
